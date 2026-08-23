@@ -1,0 +1,157 @@
+{
+  "entities": {
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Pengaturan utama toko DISSOF.ID seperti branding, kontak WA, banner hero, background tema, dan alamat offline",
+      "type": "object",
+      "properties": {
+        "brand_name": { "type": "string", "maxLength": 100 },
+        "tagline": { "type": "string", "maxLength": 200 },
+        "sub_tagline": { "type": "string", "maxLength": 300 },
+        "instagram": { "type": "string", "maxLength": 100 },
+        "whatsapp_number": { "type": "string", "maxLength": 30 },
+        "location": { "type": "string", "maxLength": 150 },
+        "offline_spot": { "type": "string", "maxLength": 200 },
+        "offline_schedule": { "type": "string", "maxLength": 200 },
+        "announcement_banner": { "type": "string", "maxLength": 500 },
+        "about_story": { "type": "string", "maxLength": 2000 },
+        "footer_text": { "type": "string", "maxLength": 300 },
+        "logo_url": { "type": "string", "maxLength": 1000000 },
+        "hero_banner_url": { "type": "string", "maxLength": 1000000 },
+        "popup_banner_image": { "type": "string", "maxLength": 1000000 },
+        "highlight_images": { "type": "array" },
+        "instagram_feed_images": { "type": "array" },
+        "background": { "type": "object" }
+      },
+      "required": ["brand_name", "whatsapp_number"]
+    },
+    "EventItem": {
+      "title": "EventItem",
+      "description": "Jadwal event, bazaar, dan pop-up market offline di Dumai",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "tagline": { "type": "string", "maxLength": 150 },
+        "location": { "type": "string", "maxLength": 300 },
+        "date": { "type": "string", "maxLength": 50 },
+        "time": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["upcoming", "past"] },
+        "poster_url": { "type": "string", "maxLength": 1000000 },
+        "gallery_images": { "type": "array" },
+        "description": { "type": "string", "maxLength": 2000 },
+        "booth_number": { "type": "string", "maxLength": 100 },
+        "google_maps_url": { "type": "string", "maxLength": 500 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "title", "location", "date"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Kategori produk manik-manik aksesoris handmade",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "icon": { "type": "string", "maxLength": 20 },
+        "image": { "type": "string", "maxLength": 500000 }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Item produk aksesoris manik DISSOF.ID",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "slug": { "type": "string", "maxLength": 150 },
+        "category_id": { "type": "string", "maxLength": 128 },
+        "category_name": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "original_price": { "type": "number" },
+        "stock": { "type": "number" },
+        "description": { "type": "string", "maxLength": 3000 },
+        "details": { "type": "array" },
+        "variants": { "type": "array" },
+        "tags": { "type": "array" },
+        "images": { "type": "array" },
+        "is_best_seller": { "type": "boolean" },
+        "is_sold_out": { "type": "boolean" },
+        "is_visible": { "type": "boolean" },
+        "rating": { "type": "number" },
+        "review_count": { "type": "number" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "name", "category_id", "price"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Pesanan belanja pelanggan masuk secara terpusat dari HP pembeli",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "customer_name": { "type": "string", "maxLength": 150 },
+        "customer_whatsapp": { "type": "string", "maxLength": 40 },
+        "customer_address": { "type": "string", "maxLength": 1000 },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "total": { "type": "number" },
+        "payment_method": { "type": "string", "enum": ["bank_transfer", "qris", "whatsapp"] },
+        "payment_proof_url": { "type": "string", "maxLength": 1000000 },
+        "order_notes": { "type": "string", "maxLength": 1000 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["Pending", "Processing", "Completed", "Cancelled"] },
+        "source": { "type": "string" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      },
+      "required": ["id", "customer_name", "customer_whatsapp", "items", "total", "status"]
+    },
+    "PaymentSettings": {
+      "title": "PaymentSettings",
+      "description": "Pengaturan informasi rekening bank dan QRIS DISSOF",
+      "type": "object",
+      "properties": {
+        "bank_name": { "type": "string", "maxLength": 100 },
+        "account_number": { "type": "string", "maxLength": 50 },
+        "account_holder": { "type": "string", "maxLength": 100 },
+        "qris_label": { "type": "string", "maxLength": 200 },
+        "qris_image": { "type": "string", "maxLength": 1000000 },
+        "instructions": { "type": "string", "maxLength": 2000 },
+        "is_enabled": { "type": "boolean" },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["bank_name", "account_number", "account_holder"]
+    }
+  },
+  "firestore": {
+    "/settings/store_config": {
+      "schema": "SiteSettings",
+      "description": "Dokumen tunggal pengaturan toko dan branding global"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Kategori perhiasan manik"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Koleksi produk aksesoris handmade"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Daftar pesanan transaksi pelanggan"
+    },
+    "/payment_settings/main_config": {
+      "schema": "PaymentSettings",
+      "description": "Konfigurasi rekening pembayaran dan QRIS"
+    },
+    "/events/{eventId}": {
+      "schema": "EventItem",
+      "description": "Jadwal dan dokumentasi event pop-up bazaar"
+    }
+  }
+}

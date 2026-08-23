@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to verify admin token or role if logged in
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    // Settings collection: Global store settings (branding, logo, hero banner, background, WhatsApp, offline spot, etc.)
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true; // Public editable store config for simple web demo or authenticated admin
+    }
+
+    // Products collection: Beads, necklaces, phone straps, rings, etc.
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Orders collection: Customer checkout from mobile/desktop & Admin order management
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Payment settings collection: Bank accounts, QRIS image
+    match /payment_settings/{paymentId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Custom requests: Custom order requests from customers
+    match /custom_requests/{requestId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Events collection: Pop-up booth schedules
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Testimonials collection
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

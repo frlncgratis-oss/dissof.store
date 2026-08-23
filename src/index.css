@@ -1,0 +1,249 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: 'Plus Jakarta Sans', 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Global Micro-interactions for Buttons & Clickables */
+  button, 
+  a, 
+  [role="button"],
+  .btn-interactive,
+  .card-interactive {
+    transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1), opacity 150ms ease, box-shadow 150ms ease;
+  }
+
+  button:active, 
+  a:active, 
+  [role="button"]:active,
+  .btn-interactive:active,
+  .card-interactive:active {
+    transform: scale(0.97);
+  }
+}
+
+.font-quicksand {
+  font-family: 'Quicksand', sans-serif;
+}
+
+.font-playfair {
+  font-family: 'Playfair Display', serif;
+}
+
+.font-fredoka {
+  font-family: 'Fredoka', cursive, sans-serif;
+}
+
+/* Custom aesthetic pastel scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fdf6f0;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fbcfe8;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f472b6;
+}
+
+/* ==========================================================================
+   1. UNIVERSAL VISIBILITY & RESET (ENSURE ALL ELEMENTS RENDER 100% ON LIVE DEPLOYMENT)
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html, body, #root {
+  min-height: 100%;
+  width: 100%;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Force elements, images, products, and categories to be 100% visible by default */
+img,
+svg,
+picture,
+video,
+canvas,
+.product-card,
+.category-card,
+.card-interactive,
+[data-section],
+.product-grid,
+.category-grid,
+.reveal-on-scroll {
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none;
+}
+
+/* Safe smooth transitions */
+.animate-fade-slide-up,
+.animate-fade-in,
+.animate-scale-in {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+
+/* ==========================================================================
+   2. BOTTOM SHEET / DRAWER SLIDE ANIMATIONS
+   ========================================================================== */
+
+@keyframes bottomSheetSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drawerSlideRight {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes drawerSlideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-bottom-sheet {
+  animation: bottomSheetSlideUp 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.animate-drawer-right {
+  animation: drawerSlideRight 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.animate-drawer-down {
+  animation: drawerSlideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* ==========================================================================
+   3. SKELETON SHIMMER LOADING EFFECT
+   ========================================================================== */
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #F5EFEB 0%, #FFFFFF 50%, #F5EFEB 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite ease-in-out;
+}
+
+.skeleton-shimmer-pink {
+  background: linear-gradient(90deg, #FDE2E4 0%, #FFF5F6 50%, #FDE2E4 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite ease-in-out;
+}
+
+/* ==========================================================================
+   4. AESTHETIC FLOATING & GLOW ANIMATIONS
+   ========================================================================== */
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(244, 114, 182, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(244, 114, 182, 0.65);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+/* Sparkle background patterns */
+.sparkle-bg {
+  background-image: radial-gradient(rgba(244, 114, 182, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.grid-cute-pattern {
+  background-size: 24px 24px;
+  background-image: linear-gradient(to right, rgba(244, 114, 182, 0.08) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(244, 114, 182, 0.08) 1px, transparent 1px);
+}
+
+/* ==========================================================================
+   5. PREFERS-REDUCED-MOTION ACCESSIBILITY
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .reveal-on-scroll {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .animate-float,
+  .animate-float-slow,
+  .animate-pulse-glow,
+  .skeleton-shimmer,
+  .skeleton-shimmer-pink {
+    animation: none !important;
+  }
+}
+

@@ -1,0 +1,6 @@
+{
+  "name": "DISSOF.ID - Handmade Accessories & Little Treasures",
+  "description": "E-Commerce and Admin Portal for DISSOF.ID handmade jewelry, charms, beaded accessories, and custom orders with WhatsApp checkout.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
