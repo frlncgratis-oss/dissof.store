@@ -346,14 +346,11 @@ export const AdminProductsPage: React.FC = () => {
     };
 
     try {
-      // Save directly to LocalStorage using key 'products'
+      // Save directly to Cloud Firestore & Local fallback
       await saveProductLocal(payload, editingProduct?.id);
 
-      if (editingProduct) {
-        showToast(`Produk "${payload.name}" berhasil diperbarui ♡`);
-      } else {
-        showToast(`Produk baru "${payload.name}" berhasil ditambahkan ke katalog ♡`);
-      }
+      // Show toast confirmation
+      showToast('Perubahan Berhasil Disimpan!');
 
       // Automatically close modal and reset error
       setModalOpen(false);
@@ -361,24 +358,24 @@ export const AdminProductsPage: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving product:', err);
       setErrorMsg(
-        err.message || 'Ukuran gambar terlalu besar atau memori browser penuh. Silakan kurangi foto atau gunakan link gambar online.'
+        err.message || 'Gagal menyimpan data ke Cloud Firestore. Silakan periksa koneksi dan coba lagi.'
       );
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Confirm delete product locally
+  // Confirm delete product
   const handleDeleteProduct = async () => {
     if (!deleteConfirmProduct) return;
     setIsDeleting(true);
 
     try {
       await deleteProductLocal(deleteConfirmProduct.id);
-      showToast(`Produk "${deleteConfirmProduct.name}" berhasil dihapus dari katalog.`);
+      showToast('Produk Berhasil Dihapus!');
       setDeleteConfirmProduct(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus produk dari penyimpanan lokal.');
+      alert(err.message || 'Gagal menghapus produk dari Cloud Firestore.');
     } finally {
       setIsDeleting(false);
     }
@@ -652,7 +649,11 @@ export const AdminProductsPage: React.FC = () => {
                 onClick={handleDeleteProduct}
                 className="flex-1 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                {isDeleting ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
                 <span>{isDeleting ? 'Menghapus...' : 'Ya, Hapus Produk'}</span>
               </button>
             </div>
@@ -1146,10 +1147,14 @@ export const AdminProductsPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="px-7 py-2.5 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-7 py-2.5 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
                 >
-                  <Check className="w-4 h-4 text-[#FF9AA2]" />
-                  <span>{isSaving ? 'Menyimpan...' : (editingProduct ? 'Simpan Perubahan ♡' : 'Simpan Produk ♡')}</span>
+                  {isSaving ? (
+                    <RefreshCw className="w-4 h-4 text-[#FF9AA2] animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4 text-[#FF9AA2]" />
+                  )}
+                  <span>{isSaving ? 'Menyimpan Perubahan...' : (editingProduct ? 'Simpan Perubahan' : 'Simpan Perubahan')}</span>
                 </button>
               </div>
 

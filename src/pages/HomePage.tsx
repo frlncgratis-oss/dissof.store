@@ -127,14 +127,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
                       alt={`${brandName} Handmade Charm Bracelet`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                    <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md p-3.5 rounded-2xl border border-pink-100 flex items-center justify-between shadow-md">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-pink-600">Heartmade Series</span>
-                        <h4 className="font-bold text-xs text-[#2E241E]">Strawberry & Pastel Beads</h4>
-                      </div>
-                      <span className="font-extrabold text-sm text-pink-600">Rp 35.000</span>
-                    </div>
                   </div>
 
                   {/* Floating Aesthetic Card 1 */}

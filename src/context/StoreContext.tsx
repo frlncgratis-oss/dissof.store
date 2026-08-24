@@ -1099,13 +1099,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error(`Produk dengan ID ${editingId} tidak ditemukan.`);
       }
 
+      const existingProd = currentProducts[targetIndex];
       updatedProduct = {
-        ...currentProducts[targetIndex],
+        ...existingProd,
         ...productData,
-        images: compressedImages.length > 0 ? compressedImages : (productData.images || []),
+        id: editingId,
+        name: safeString(productData.name) || existingProd.name || 'Produk Aksesoris',
+        category_id: safeString(productData.category_id) || existingProd.category_id || 'bracelets',
         category_name: categoryName,
+        price: Number(productData.price) || 0,
+        original_price: productData.original_price ? Number(productData.original_price) : undefined,
+        stock: productData.stock != null ? Number(productData.stock) : (existingProd.stock ?? 10),
+        description: productData.description !== undefined ? productData.description : (existingProd.description || ''),
+        details: productData.details || existingProd.details || [],
+        variants: productData.variants || existingProd.variants || [],
+        tags: productData.tags || existingProd.tags || [],
+        images: compressedImages.length > 0 ? compressedImages : (productData.images || existingProd.images || []),
+        is_best_seller: productData.is_best_seller !== undefined ? Boolean(productData.is_best_seller) : Boolean(existingProd.is_best_seller),
+        is_sold_out: productData.is_sold_out !== undefined ? Boolean(productData.is_sold_out) : Boolean(existingProd.is_sold_out),
+        is_visible: productData.is_visible !== undefined ? Boolean(productData.is_visible) : (existingProd.is_visible !== false),
         updated_at: new Date().toISOString(),
-      } as Product;
+      };
 
       currentProducts[targetIndex] = updatedProduct;
     } else {
@@ -1139,16 +1153,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       currentProducts = [updatedProduct, ...currentProducts];
     }
 
-    // 2. Immediate Local State Update
+    // 2. Immediate Local State & Cache Update for Instant UI responsiveness
     setProducts(currentProducts);
-
-    // 3. Resilient LocalStorage & IndexedDB Persistence
     safeLocalStorageSet(PRODUCTS_STORAGE_KEY, JSON.stringify(currentProducts));
     idbSaveAll('products', currentProducts).catch(() => {});
 
-    // 4. Firebase Firestore Sync with Transparent Quota Bypass
+    // 3. Clean payload for Firestore (remove any undefined fields to prevent Firestore serialization errors)
+    const firestoreProductPayload: Record<string, any> = {};
+    Object.entries(updatedProduct).forEach(([key, val]) => {
+      if (val !== undefined) {
+        firestoreProductPayload[key] = val;
+      }
+    });
+
+    // 4. Save permanently to Cloud Firestore
     try {
-      await setDoc(doc(db, 'products', updatedProduct.id), updatedProduct, { merge: true });
+      await setDoc(doc(db, 'products', updatedProduct.id), firestoreProductPayload, { merge: true });
+      setIsOnlineSynced(true);
     } catch (e: any) {
       if (isQuotaExceededError(e)) {
         console.warn(
@@ -1156,7 +1177,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           e
         );
       } else {
-        console.warn('Firebase sync warning (product safely saved in local offline storage):', e);
+        console.warn('Firebase sync warning (product safely saved in local offline cache):', e);
       }
     }
 
@@ -1170,8 +1191,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     idbSaveAll('products', updatedProducts).catch(() => {});
     idbDeleteItem('products', productId).catch(() => {});
 
+    // Delete permanently from Cloud Firestore
     try {
       await deleteDoc(doc(db, 'products', productId));
+      setIsOnlineSynced(true);
     } catch (e: any) {
       if (isQuotaExceededError(e)) {
         console.warn('[Firebase Quota Bypass] Delete synced locally (IndexedDB/LocalStorage):', e);
