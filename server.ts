@@ -24,9 +24,12 @@ app.use('/uploads', express.static(uploadsDir));
 // API routes
 app.use('/api', apiRouter);
 
-// Frontend Vite Integration
+// Frontend Vite / Static Integration
 async function startServer() {
-  if (!isProd) {
+  const distPath = path.resolve(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (!isProd && !hasDist) {
     // Development mode with Vite middleware
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -39,10 +42,12 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // Production mode: serve built assets
-    const distPath = path.resolve(process.cwd(), 'dist');
+    // Serve built dist assets and fallback SPA routing for all subpaths
     app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+        return next();
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

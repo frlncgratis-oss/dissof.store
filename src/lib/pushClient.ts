@@ -58,15 +58,21 @@ export async function registerAdminPushSubscription(): Promise<{ success: boolea
 
     const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
 
-    // 3. Check for existing subscription or subscribe new
+    // 3. Unsubscribe any stale subscription and subscribe with current VAPID key
     let subscription = await registration.pushManager.getSubscription();
 
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: applicationServerKey as any
-      });
+    if (subscription) {
+      try {
+        await subscription.unsubscribe();
+      } catch (e) {
+        console.warn('Could not unsubscribe stale push subscription:', e);
+      }
     }
+
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey as any
+    });
 
     if (!subscription) {
       throw new Error('Gagal membuat objek PushSubscription dari PushManager');

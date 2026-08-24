@@ -259,17 +259,12 @@ export function initServiceWorker(): void {
   if (typeof window === 'undefined') return;
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      // Register Firebase Messaging SW which handles onBackgroundMessage & push events
-      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
         .then((reg) => {
-          console.log('DISSOF Push Service Worker registered successfully:', reg.scope);
+          console.log('✅ DISSOF Web Push Service Worker registered:', reg.scope);
         })
-        .catch(() => {
-          // Fallback to /sw.js
-          navigator.serviceWorker.register('/sw.js')
-            .catch((err) => {
-              console.warn('Service Worker registration warning:', err);
-            });
+        .catch((err) => {
+          console.warn('Service Worker registration warning:', err);
         });
     });
 
