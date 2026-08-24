@@ -78,10 +78,16 @@ export async function registerAdminFCMToken(): Promise<string | null> {
 
     let registration: ServiceWorkerRegistration | undefined;
     if ('serviceWorker' in navigator) {
-      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-        scope: '/'
-      });
-      await navigator.serviceWorker.ready;
+      try {
+        const baseUrl = (import.meta as any).env?.BASE_URL || './';
+        const swPath = baseUrl.endsWith('/') ? `${baseUrl}firebase-messaging-sw.js` : `${baseUrl}/firebase-messaging-sw.js`;
+        registration = await navigator.serviceWorker.register(swPath, {
+          scope: baseUrl
+        });
+        await navigator.serviceWorker.ready;
+      } catch (swErr) {
+        console.warn('FCM SW registration fallback:', swErr);
+      }
     }
 
     const messaging = getMessaging(app);

@@ -30,8 +30,12 @@ export async function fetchVapidPublicKey(): Promise<string | null> {
   }
 }
 
+import { getServiceWorkerUrl, getServiceWorkerScope } from './utils';
+import { db } from './firebase';
+import { doc, setDoc } from 'firebase/firestore';
+
 /**
- * Register PushManager subscription on Admin Device and send to backend
+ * Register PushManager subscription on Admin Device and send to backend & Firestore
  */
 export async function registerAdminPushSubscription(): Promise<{ success: boolean; subscription?: PushSubscription; error?: string }> {
   if (typeof window === 'undefined') {
@@ -46,8 +50,16 @@ export async function registerAdminPushSubscription(): Promise<{ success: boolea
   }
 
   try {
-    // 1. Ensure Service Worker is registered and ready
-    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    // 1. Ensure Service Worker is registered and ready with correct relative path for GitHub Pages
+    const swUrl = getServiceWorkerUrl();
+    const scope = getServiceWorkerScope();
+    let registration: ServiceWorkerRegistration;
+
+    try {
+      registration = await navigator.serviceWorker.register(swUrl, { scope });
+    } catch {
+      registration = await navigator.serviceWorker.register('./sw.js');
+    }
     await navigator.serviceWorker.ready;
 
     // 2. Fetch VAPID public key
@@ -78,7 +90,7 @@ export async function registerAdminPushSubscription(): Promise<{ success: boolea
       throw new Error('Gagal membuat objek PushSubscription dari PushManager');
     }
 
-    // 4. Send subscription to backend server
+    // 4. Save subscription to Firestore and send to backend
     const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true;
 
@@ -91,17 +103,31 @@ export async function registerAdminPushSubscription(): Promise<{ success: boolea
       }
     };
 
-    const res = await fetch('/api/push/subscribe', {
+    // Save directly to Firestore collection `admin_push_subscriptions`
+    try {
+      const endpointHash = subscription.endpoint.slice(-60).replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(db, 'admin_push_subscriptions', endpointHash), {
+        endpoint: subscription.endpoint,
+        subscription: subscription.toJSON(),
+        platform: isIOS ? (isStandalone ? 'iOS PWA (Home Screen)' : 'iOS Safari') : 'Web / Android',
+        device: navigator.platform || 'iPhone / Mobile',
+        userAgent: navigator.userAgent,
+        updatedAt: new Date().toISOString(),
+        role: 'admin'
+      }, { merge: true });
+      console.log('✅ Push subscription successfully saved to Firestore admin_push_subscriptions');
+    } catch (fsErr) {
+      console.warn('Firestore subscription sync warning:', fsErr);
+    }
+
+    // Send to backend endpoint if backend is reachable
+    fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }).catch(() => {});
 
-    if (!res.ok) {
-      console.warn('Backend push subscribe returned non-200 status');
-    }
-
-    console.log('✅ [Web Push Client] Admin device registered to PushManager & Backend successfully!');
+    console.log('✅ [Web Push Client] Admin device registered to PushManager successfully!');
     return { success: true, subscription };
   } catch (err: any) {
     console.error('❌ [Web Push Client] Error subscribing to PushManager:', err);

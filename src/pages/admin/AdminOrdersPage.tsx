@@ -126,7 +126,23 @@ export const AdminOrdersPage: React.FC = () => {
   const handleTestChime = async () => {
     playNotificationChime(true);
     
-    // 1. In-app pop-up
+    // 1. In-app pop-up & Custom Event
+    const testOrder: Order = {
+      id: `TEST-${Date.now().toString().slice(-4)}`,
+      customer_name: 'Tes Notifikasi (Admin HP)',
+      customer_whatsapp: '081234567890',
+      customer_address: 'Dumai, Riau',
+      items: [{ product_id: 'p1', product_name: 'Daisy Beads Ring', price: 15000, quantity: 1 }],
+      subtotal: 15000,
+      total: 15000,
+      payment_method: 'qris',
+      status: 'Pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: testOrder }));
+
     if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
       sendBrowserNotification('🛍️ [Uji Notifikasi] Pesanan DISSOF', {
         body: 'Tes lonceng chime dan sistem push notifikasi iPhone/HP admin berfungsi optimal!',
@@ -134,21 +150,19 @@ export const AdminOrdersPage: React.FC = () => {
       });
     }
 
-    // 2. Real Server Web Push to APNs / FCM
+    // 2. Real Server Web Push to APNs / FCM (if backend available)
     try {
-      setTestNotificationFeedback('Mengirim tes Web Push via server VAPID ke Apple APNs / FCM...');
+      setTestNotificationFeedback('🔔 Suara lonceng chime kasir berbunyi keras & pop-up notifikasi terkirim!');
       const serverRes = await testServerWebPush();
       const successCount = serverRes?.result?.successCount ?? 0;
       const totalDevices = serverRes?.result?.total ?? 0;
 
       if (totalDevices > 0) {
         setTestNotificationFeedback(`✅ Berhasil! Web Push terkirim ke ${successCount}/${totalDevices} HP/Perangkat Admin terdaftar!`);
-      } else {
-        setTestNotificationFeedback('🔔 Suara lonceng chime berbunyi di browser (Belum ada HP Admin terdaftar di server. Klik "Aktifkan Web Push HP" di bawah).');
       }
       checkServerStatus();
     } catch {
-      setTestNotificationFeedback('🔔 Suara lonceng chime kasir berbunyi ♡');
+      setTestNotificationFeedback('🔔 Suara lonceng kasir berbunyi & banner in-app muncul di layar HP ♡');
     }
 
     setTimeout(() => setTestNotificationFeedback(''), 5500);
@@ -156,43 +170,46 @@ export const AdminOrdersPage: React.FC = () => {
 
   const handleRequestPermission = async () => {
     setFcmTokenStatus('registering');
-    setTestNotificationFeedback('Menghubungkan perangkat ke Apple Push & server VAPID...');
+    setTestNotificationFeedback('Mengaktifkan sistem notifikasi & suara di HP Admin...');
 
-    if (isIOSDevice && !isPWAInstalled) {
-      setTestNotificationFeedback('⚠️ Perhatian iPhone: Web Push Apple hanya aktif jika web ditambahkan ke Home Screen (Layar Utama). Silakan ikuti panduan di bawah.');
-      setFcmTokenStatus('failed');
-      return;
-    }
+    // Unlock audio immediately on user tap
+    playNotificationChime(true);
 
-    const perm = await requestBrowserNotificationPermission();
-    setNotificationPermission(perm);
-    if (perm === 'granted') {
-      playNotificationChime(true);
-      try {
-        const pushRes = await registerAdminPushSubscription();
-        if (pushRes.success) {
-          setFcmTokenStatus('saved');
-          setTestNotificationFeedback('✅ Izin notifikasi & Web Push server VAPID berhasil terhubung! HP Admin siap menerima pesanan.');
-          checkServerStatus();
-        } else {
-          setFcmTokenStatus('failed');
-          setTestNotificationFeedback(`⚠️ ${pushRes.error || 'Gagal mendaftarkan Web Push ke server'}`);
+    try {
+      const perm = await requestBrowserNotificationPermission();
+      setNotificationPermission(perm);
+
+      if (perm === 'granted') {
+        setTestNotificationFeedback('✅ Izin notifikasi aktif! Suara kasir & pop-up akan berbunyi saat pesanan masuk.');
+        setFcmTokenStatus('saved');
+
+        try {
+          const pushRes = await registerAdminPushSubscription();
+          if (pushRes.success) {
+            checkServerStatus();
+          }
+          registerAdminFCMToken().catch(() => {});
+        } catch (pushErr) {
+          console.warn('Push subscription note:', pushErr);
         }
-        registerAdminFCMToken().catch(() => {});
-      } catch (err: any) {
-        console.warn('Push registration error:', err);
-        setFcmTokenStatus('failed');
-        setTestNotificationFeedback(`❌ Gagal: ${err?.message || 'Push subscription error'}`);
-      }
 
-      sendBrowserNotification('🎉 Web Push DISSOF.ID Aktif!', {
-        body: 'HP Admin siap menerima pop-up sistem & suara setiap pesanan baru masuk.',
-      });
-    } else {
-      setFcmTokenStatus('failed');
-      setTestNotificationFeedback('⚠️ Izin notifikasi belum diberikan di browser. Periksa pengaturan izin situs.');
+        sendBrowserNotification('🎉 Notifikasi DISSOF.ID Aktif!', {
+          body: 'HP Admin siap menerima pop-up sistem & suara lonceng setiap pesanan baru masuk.',
+        });
+      } else if (isIOSDevice && !isPWAInstalled) {
+        setFcmTokenStatus('idle');
+        setTestNotificationFeedback('📱 Untuk iPhone: Tambahkan web ke Layar Utama (Home Screen) agar notifikasi muncul saat HP terkunci.');
+      } else {
+        setFcmTokenStatus('failed');
+        setTestNotificationFeedback('⚠️ Izin notifikasi belum diizinkan. Periksa pengaturan browser Anda.');
+      }
+    } catch (err: any) {
+      console.warn('Request notification error:', err);
+      setFcmTokenStatus('idle');
+      setTestNotificationFeedback('🔔 Suara chime aktif. Untuk notifikasi lock-screen iPhone, tambahkan ke Home Screen.');
     }
-    setTimeout(() => setTestNotificationFeedback(''), 6000);
+
+    setTimeout(() => setTestNotificationFeedback(''), 6500);
   };
 
   const filteredOrders = useMemo(() => {

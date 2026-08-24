@@ -255,16 +255,34 @@ export function playNotificationChime(isExtraLoud = true): void {
 /**
  * Registers the background Service Worker for Push & Offline Notifications
  */
+export function getServiceWorkerUrl(): string {
+  if (typeof window === 'undefined') return './sw.js';
+  const baseUrl = (import.meta as any).env?.BASE_URL || './';
+  return baseUrl.endsWith('/') ? `${baseUrl}sw.js` : `${baseUrl}/sw.js`;
+}
+
+export function getServiceWorkerScope(): string {
+  if (typeof window === 'undefined') return './';
+  const baseUrl = (import.meta as any).env?.BASE_URL || './';
+  return baseUrl;
+}
+
 export function initServiceWorker(): void {
   if (typeof window === 'undefined') return;
   if ('serviceWorker' in navigator) {
+    const swUrl = getServiceWorkerUrl();
+    const scope = getServiceWorkerScope();
+
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      navigator.serviceWorker.register(swUrl, { scope })
         .then((reg) => {
           console.log('✅ DISSOF Web Push Service Worker registered:', reg.scope);
         })
         .catch((err) => {
-          console.warn('Service Worker registration warning:', err);
+          // Fallback to relative registration if scope restriction happens
+          navigator.serviceWorker.register('./sw.js')
+            .then((reg) => console.log('✅ DISSOF SW registered with relative fallback:', reg.scope))
+            .catch((fallbackErr) => console.warn('Service Worker registration warning:', fallbackErr));
         });
     });
 
