@@ -153,7 +153,7 @@ export const AdminBrandingPage: React.FC = () => {
     }
 
     const backup = getBrandingBackupLocal();
-    const source = {
+    const source: any = {
       ...(settings || {}),
       ...(backup || {})
     };

@@ -34,7 +34,7 @@ export const DEFAULT_ASPECT_RATIOS: AspectRatioOption[] = [
 ];
 
 interface ImageCropModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   imageSrc: string | null;
   title?: string;
   description?: string;
@@ -46,7 +46,7 @@ interface ImageCropModalProps {
 }
 
 export const ImageCropModal: React.FC<ImageCropModalProps> = ({
-  isOpen,
+  isOpen = true,
   imageSrc,
   title = 'Sesuaikan & Potong Foto (Crop) ♡',
   description = 'Geser, cubit (pinch) atau gunakan tombol zoom & rotasi untuk mengatur posisi foto terbaik.',

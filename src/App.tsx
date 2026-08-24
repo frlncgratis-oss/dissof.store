@@ -220,7 +220,7 @@ const MainApp: React.FC = () => {
 };
 
 interface ErrorBoundaryProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -228,33 +228,30 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Application Error:', error, errorInfo);
   }
 
-  handleReload = () => {
+  public handleReload = () => {
     window.location.reload();
   };
 
-  handleReset = () => {
+  public handleReset = () => {
     localStorage.removeItem('dissof_store_settings');
     window.location.href = window.location.origin + window.location.pathname;
   };
 
-  override render() {
+  public render() {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center font-sans">
@@ -262,9 +259,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <div className="w-16 h-16 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-2xl mx-auto shadow-xs">
               ♡
             </div>
-            <h2 className="text-xl font-bold text-[#2E241E] font-playfair">Sedang Memuat Halaman...</h2>
+            <h2 className="text-xl font-bold text-[#2E241E] font-playfair">Memuat Halaman...</h2>
             <p className="text-xs text-[#6B5C54] leading-relaxed">
-              Ada sedikit kendala saat memuat aset tampilan. Klik tombol di bawah untuk memuat ulang halaman secara bersih.
+              Terjadi sedikit kendala saat memuat aset tampilan. Klik tombol di bawah untuk memuat ulang halaman secara bersih.
             </p>
             <div className="pt-2 flex flex-col gap-2">
               <button
