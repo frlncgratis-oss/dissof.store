@@ -126,6 +126,20 @@
         "notes": { "type": "string", "maxLength": 500 }
       },
       "required": ["bank_name", "account_number", "account_holder"]
+    },
+    "AdminToken": {
+      "title": "AdminToken",
+      "description": "FCM Device Token untuk notifikasi push admin di HP / iOS",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string", "maxLength": 500 },
+        "platform": { "type": "string", "maxLength": 100 },
+        "device": { "type": "string", "maxLength": 100 },
+        "userAgent": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string" },
+        "role": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["token"]
     }
   },
   "firestore": {
@@ -152,6 +166,10 @@
     "/events/{eventId}": {
       "schema": "EventItem",
       "description": "Jadwal dan dokumentasi event pop-up bazaar"
+    },
+    "/admin_tokens/{tokenId}": {
+      "schema": "AdminToken",
+      "description": "Daftar token FCM device admin untuk push notification"
     }
   }
 }

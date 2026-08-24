@@ -20,7 +20,9 @@ import {
   Sparkles,
   Send,
   Bell,
-  Radio
+  Radio,
+  Smartphone,
+  Check
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Order } from '../../types';
@@ -34,6 +36,7 @@ import {
   sendBrowserNotification,
   isBrowserNotificationSupported
 } from '../../lib/utils';
+import { registerAdminFCMToken } from '../../lib/firebase';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 
 export const AdminOrdersPage: React.FC = () => {
@@ -43,6 +46,7 @@ export const AdminOrdersPage: React.FC = () => {
   const [previewProof, setPreviewProof] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<{ id: string; msg: string } | null>(null);
   const [testNotificationFeedback, setTestNotificationFeedback] = useState<string>('');
+  const [fcmTokenStatus, setFcmTokenStatus] = useState<'idle' | 'registering' | 'saved' | 'failed'>('idle');
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -53,7 +57,15 @@ export const AdminOrdersPage: React.FC = () => {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
+      const currentPerm = Notification.permission;
+      setNotificationPermission(currentPerm);
+      if (currentPerm === 'granted') {
+        registerAdminFCMToken()
+          .then((token) => {
+            if (token) setFcmTokenStatus('saved');
+          })
+          .catch(() => {});
+      }
     }
   }, []);
 
@@ -83,25 +95,41 @@ export const AdminOrdersPage: React.FC = () => {
     playNotificationChime();
     if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
       sendBrowserNotification('🛍️ [Uji Notifikasi] Pesanan DISSOF', {
-        body: 'Tes lonceng chime dan sistem push notifikasi browser berfungsi optimal!',
+        body: 'Tes lonceng chime dan sistem push notifikasi iPhone/HP admin berfungsi optimal!',
+        orderId: 'TEST-001'
       });
-      setTestNotificationFeedback('Suara chime berbunyi & pop-up berhasil muncul ♡');
+      setTestNotificationFeedback('Suara chime berbunyi & pop-up sistem berhasil dikirim ♡');
     } else {
-      setTestNotificationFeedback('Suara chime berbunyi ♡');
+      setTestNotificationFeedback('Suara lonceng chime kasir berbunyi ♡');
     }
-    setTimeout(() => setTestNotificationFeedback(''), 3000);
+    setTimeout(() => setTestNotificationFeedback(''), 3500);
   };
 
   const handleRequestPermission = async () => {
+    setFcmTokenStatus('registering');
     const perm = await requestBrowserNotificationPermission();
     setNotificationPermission(perm);
     if (perm === 'granted') {
       playNotificationChime();
+      try {
+        const token = await registerAdminFCMToken();
+        if (token) {
+          setFcmTokenStatus('saved');
+        } else {
+          setFcmTokenStatus('saved');
+        }
+      } catch (err) {
+        console.warn('FCM registration error:', err);
+        setFcmTokenStatus('failed');
+      }
+
       sendBrowserNotification('🎉 Notifikasi Pesanan DISSOF Aktif!', {
-        body: 'Sistem siap memberitahu setiap pesanan baru masuk secara real-time.',
+        body: 'HP Admin siap menerima pop-up & suara setiap pesanan baru masuk secara real-time.',
       });
-      setTestNotificationFeedback('Izin notifikasi browser berhasil diaktifkan ♡');
-      setTimeout(() => setTestNotificationFeedback(''), 3000);
+      setTestNotificationFeedback('Izin notifikasi & token background HP Admin berhasil diaktifkan ♡');
+      setTimeout(() => setTestNotificationFeedback(''), 3500);
+    } else {
+      setFcmTokenStatus('failed');
     }
   };
 
@@ -151,15 +179,25 @@ export const AdminOrdersPage: React.FC = () => {
 
         {/* Audio Chime & Push Notification Buttons */}
         <div className="flex flex-wrap items-center gap-2">
-          {notificationPermission !== 'granted' && (
+          {notificationPermission === 'granted' ? (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Notifikasi HP Admin Aktif</span>
+              {fcmTokenStatus === 'saved' && (
+                <span className="text-[10px] bg-emerald-200/60 text-emerald-900 px-1.5 py-0.5 rounded-full font-semibold">FCM Sync</span>
+              )}
+            </div>
+          ) : (
             <button
               type="button"
               onClick={handleRequestPermission}
-              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer"
-              title="Aktifkan notifikasi browser pop-up"
+              disabled={fcmTokenStatus === 'registering'}
+              className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-75"
+              title="Aktifkan notifikasi browser pop-up & background push"
             >
               <Bell className="w-3.5 h-3.5" />
-              <span>Aktifkan Notifikasi Pop-up</span>
+              <span>{fcmTokenStatus === 'registering' ? 'Mendaftarkan Token...' : 'Aktifkan Notifikasi Pop-up'}</span>
             </button>
           )}
 

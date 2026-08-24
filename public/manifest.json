@@ -1,0 +1,22 @@
+{
+  "name": "DISSOF.ID Handmade & Admin",
+  "short_name": "DISSOF",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#FF9AA2",
+  "orientation": "portrait",
+  "description": "DISSOF.ID - Handmade accessories, charm bracelets, phone charms, and realtime order management",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=192&auto=format&fit=crop&q=80",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=512&auto=format&fit=crop&q=80",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

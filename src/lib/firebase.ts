@@ -5,6 +5,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
   doc,
+  setDoc,
   getDocFromServer
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -61,6 +62,81 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+/**
+ * Register Admin Device FCM Token to Firestore `admin_tokens` collection
+ */
+export async function registerAdminFCMToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
+    const supported = await isSupported();
+    if (!supported) {
+      console.log('Firebase Messaging is not supported in this browser/environment.');
+      return null;
+    }
+
+    let registration: ServiceWorkerRegistration | undefined;
+    if ('serviceWorker' in navigator) {
+      registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/'
+      });
+      await navigator.serviceWorker.ready;
+    }
+
+    const messaging = getMessaging(app);
+    const currentToken = await getToken(messaging, {
+      serviceWorkerRegistration: registration
+    });
+
+    if (currentToken) {
+      const sanitizedDocId = currentToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
+      const tokenDocRef = doc(db, 'admin_tokens', sanitizedDocId);
+      
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      await setDoc(tokenDocRef, {
+        token: currentToken,
+        platform: isIOS ? 'iOS Safari / PWA' : 'Web / Android',
+        device: navigator.platform || 'Unknown',
+        userAgent: navigator.userAgent,
+        updatedAt: new Date().toISOString(),
+        role: 'admin'
+      }, { merge: true });
+
+      console.log('FCM Admin Token registered & saved to Firestore admin_tokens:', currentToken.substring(0, 15) + '...');
+      return currentToken;
+    } else {
+      console.warn('No registration token available. Request permission to generate one.');
+      return null;
+    }
+  } catch (err) {
+    console.warn('An error occurred while retrieving FCM token:', err);
+    return null;
+  }
+}
+
+/**
+ * Listen for foreground FCM messages
+ */
+export async function setupFCMForegroundListener(onMessageCallback: (payload: any) => void) {
+  if (typeof window === 'undefined') return () => {};
+
+  try {
+    const { getMessaging, onMessage, isSupported } = await import('firebase/messaging');
+    const supported = await isSupported();
+    if (!supported) return () => {};
+
+    const messaging = getMessaging(app);
+    return onMessage(messaging, (payload) => {
+      console.log('FCM Foreground message received:', payload);
+      onMessageCallback(payload);
+    });
+  } catch (err) {
+    console.warn('Could not attach FCM foreground listener:', err);
+    return () => {};
+  }
+}
+
 // Test connection on initialization
 async function testConnection() {
   try {
@@ -74,3 +150,4 @@ async function testConnection() {
 testConnection();
 
 export default app;
+

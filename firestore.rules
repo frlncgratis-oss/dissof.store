@@ -58,6 +58,12 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Admin FCM Device Tokens collection
+    match /admin_tokens/{tokenId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Default fallback
     match /{document=**} {
       allow read, write: if true;

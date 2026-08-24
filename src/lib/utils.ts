@@ -253,10 +253,44 @@ export function playNotificationChime(isExtraLoud = true): void {
 }
 
 /**
+ * Registers the background Service Worker for Push & Offline Notifications
+ */
+export function initServiceWorker(): void {
+  if (typeof window === 'undefined') return;
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      // Register Firebase Messaging SW which handles onBackgroundMessage & push events
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        .then((reg) => {
+          console.log('DISSOF Push Service Worker registered successfully:', reg.scope);
+        })
+        .catch(() => {
+          // Fallback to /sw.js
+          navigator.serviceWorker.register('/sw.js')
+            .catch((err) => {
+              console.warn('Service Worker registration warning:', err);
+            });
+        });
+    });
+
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'DISSOF_NAVIGATE_ORDERS') {
+        window.dispatchEvent(new CustomEvent('dissof_open_orders_tab', { detail: { orderId: event.data?.orderId } }));
+      }
+    });
+  }
+}
+
+// Auto-run service worker registration
+if (typeof window !== 'undefined') {
+  initServiceWorker();
+}
+
+/**
  * Checks whether Browser Notifications are supported on current platform
  */
 export function isBrowserNotificationSupported(): boolean {
-  return typeof window !== 'undefined' && 'Notification' in window;
+  return typeof window !== 'undefined' && ('Notification' in window || ('serviceWorker' in navigator && 'PushManager' in window));
 }
 
 /**
@@ -267,8 +301,11 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
     return 'denied';
   }
   try {
-    const permission = await Notification.requestPermission();
-    return permission;
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      return permission;
+    }
+    return 'denied';
   } catch (err) {
     console.warn('Could not request notification permission:', err);
     return 'denied';
@@ -277,27 +314,62 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
 
 /**
  * Sends a native browser system notification pop-up
+ * Supports ServiceWorker showNotification (iOS Safari 16.4+ & PWA) and Notification constructor fallback.
  */
 export function sendBrowserNotification(
   title: string, 
-  options?: NotificationOptions & { onClick?: () => void }
+  options?: NotificationOptions & { onClick?: () => void; orderId?: string }
+): void {
+  if (typeof window === 'undefined') return;
+
+  const notifOptions: NotificationOptions = {
+    icon: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=128&auto=format&fit=crop&q=80',
+    badge: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=96&auto=format&fit=crop&q=80',
+    ...options,
+    data: {
+      url: '/',
+      orderId: options?.orderId,
+      ...((options as any)?.data || {}),
+    },
+  };
+
+  // 1. Try Service Worker showNotification first (Mandatory for iOS 16.4+ Web Push & PWA)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then((registration) => {
+        if (registration && typeof registration.showNotification === 'function') {
+          return registration.showNotification(title, notifOptions);
+        }
+        throw new Error('SW showNotification not supported');
+      })
+      .catch(() => {
+        // Fallback to standard Notification constructor
+        fallbackDirectNotification(title, notifOptions, options?.onClick);
+      });
+    return;
+  }
+
+  // 2. Direct fallback
+  fallbackDirectNotification(title, notifOptions, options?.onClick);
+}
+
+function fallbackDirectNotification(
+  title: string, 
+  options: NotificationOptions, 
+  onClick?: () => void
 ): Notification | null {
-  if (!isBrowserNotificationSupported()) return null;
+  if (typeof window === 'undefined' || !('Notification' in window)) return null;
   if (Notification.permission !== 'granted') return null;
 
   try {
-    const notif = new Notification(title, {
-      icon: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=128&auto=format&fit=crop&q=80',
-      badge: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=96&auto=format&fit=crop&q=80',
-      ...options,
-    });
+    const notif = new Notification(title, options);
 
     notif.onclick = () => {
       try {
         window.focus();
       } catch {}
-      if (options?.onClick) {
-        options.onClick();
+      if (onClick) {
+        onClick();
       }
       notif.close();
     };
