@@ -4,6 +4,7 @@ import { StoreProvider, useStore } from './context/StoreContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { CartDrawer } from './components/layout/CartDrawer';
+import { GlobalOrderNotifier } from './components/layout/GlobalOrderNotifier';
 import { HomePage } from './pages/HomePage';
 import { ShopPage } from './pages/ShopPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
@@ -37,6 +38,12 @@ const MainApp: React.FC = () => {
 
   // Admin sub-tab
   const [currentAdminTab, setCurrentAdminTab] = useState<string>('dashboard');
+
+  const handleOpenAdminOrders = () => {
+    setCurrentTab('admin');
+    setCurrentAdminTab('orders');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Dynamic Favicon & Title update
   React.useEffect(() => {
@@ -128,11 +135,13 @@ const MainApp: React.FC = () => {
     }
 
     return (
-      <AdminLayout
-        currentAdminTab={currentAdminTab}
-        setCurrentAdminTab={setCurrentAdminTab}
-        onViewStore={() => handleNavigate('home')}
-      >
+      <>
+        <GlobalOrderNotifier onNavigateToOrders={handleOpenAdminOrders} />
+        <AdminLayout
+          currentAdminTab={currentAdminTab}
+          setCurrentAdminTab={setCurrentAdminTab}
+          onViewStore={() => handleNavigate('home')}
+        >
         {currentAdminTab === 'dashboard' && (
           <AdminDashboardPage onNavigateTab={(tab) => setCurrentAdminTab(tab)} />
         )}
@@ -149,15 +158,17 @@ const MainApp: React.FC = () => {
         {currentAdminTab === 'settings' && <AdminSettingsPage />}
         {currentAdminTab === 'change-password' && <AdminChangePasswordPage />}
       </AdminLayout>
+      </>
     );
   }
 
   // Customer Facing Store
   return (
     <div 
-      className="min-h-screen flex flex-col text-[#2D2D2D] selection:bg-[#FFEFF1] selection:text-[#2D2D2D] transition-colors duration-300"
+      className="min-h-screen flex flex-col text-[#2D2D2D] selection:bg-[#FFEFF1] selection:text-[#2D2D2D] transition-colors duration-300 relative"
       style={customBgStyle}
     >
+      <GlobalOrderNotifier onNavigateToOrders={handleOpenAdminOrders} />
       
       {/* Navbar */}
       <Navbar
