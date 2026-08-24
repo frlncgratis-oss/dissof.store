@@ -1,7 +1,7 @@
 {
   "name": "DISSOF.ID Handmade & Admin",
   "short_name": "DISSOF",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#FAF7F2",
   "theme_color": "#FF9AA2",
