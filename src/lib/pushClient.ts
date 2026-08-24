@@ -3,6 +3,24 @@
  * Handles Service Worker registration, PushManager subscription with VAPID, and backend sync.
  */
 
+const CLOUD_RUN_BACKEND = 'https://ais-pre-loryjke7x2upwdjr54g4hm-778937149737.asia-east1.run.app';
+
+async function fetchFromBackend(path: string, options?: RequestInit): Promise<Response> {
+  // 1. Try relative path first (works in local dev & fullstack preview)
+  try {
+    const res = await fetch(path, options);
+    if (res.ok || res.status < 500) {
+      return res;
+    }
+  } catch {
+    // Relative fetch failed, fall through to Cloud Run backend
+  }
+
+  // 2. Try absolute Cloud Run backend URL (works on GitHub Pages / custom domains)
+  const fullUrl = `${CLOUD_RUN_BACKEND}${path.startsWith('/') ? path : `/${path}`}`;
+  return await fetch(fullUrl, options);
+}
+
 // Helper to convert URL-safe base64 string to Uint8Array for applicationServerKey
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -20,7 +38,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
  */
 export async function fetchVapidPublicKey(): Promise<string | null> {
   try {
-    const res = await fetch('/api/push/vapid-public-key');
+    const res = await fetchFromBackend('/api/push/vapid-public-key');
     if (!res.ok) throw new Error('Failed to fetch VAPID public key');
     const data = await res.json();
     return data.publicKey;
@@ -120,8 +138,8 @@ export async function registerAdminPushSubscription(): Promise<{ success: boolea
       console.warn('Firestore subscription sync warning:', fsErr);
     }
 
-    // Send to backend endpoint if backend is reachable
-    fetch('/api/push/subscribe', {
+    // Send to backend endpoint
+    fetchFromBackend('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -145,7 +163,7 @@ export async function triggerOrderWebPush(orderData: {
   itemsCount?: number;
 }): Promise<boolean> {
   try {
-    const res = await fetch('/api/push/notify-new-order', {
+    const res = await fetchFromBackend('/api/push/notify-new-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(orderData)
@@ -162,7 +180,7 @@ export async function triggerOrderWebPush(orderData: {
  */
 export async function testServerWebPush(): Promise<any> {
   try {
-    const res = await fetch('/api/push/test', {
+    const res = await fetchFromBackend('/api/push/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });

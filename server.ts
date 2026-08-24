@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -9,6 +10,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 const isProd = process.env.NODE_ENV === 'production';
+
+// Enable CORS for external access (GitHub Pages, PWA, Mobile clients)
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
 // Body parsers
 app.use(express.json({ limit: '50mb' }));
