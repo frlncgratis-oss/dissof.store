@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Navbar } from './components/layout/Navbar';
@@ -219,13 +219,84 @@ const MainApp: React.FC = () => {
   );
 };
 
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Application Error:', error, errorInfo);
+  }
+
+  handleReload = () => {
+    window.location.reload();
+  };
+
+  handleReset = () => {
+    localStorage.removeItem('dissof_store_settings');
+    window.location.href = window.location.origin + window.location.pathname;
+  };
+
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center font-sans">
+          <div className="bg-white p-8 rounded-3xl border border-pink-100 shadow-xl max-w-md w-full space-y-4">
+            <div className="w-16 h-16 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center text-2xl mx-auto shadow-xs">
+              ♡
+            </div>
+            <h2 className="text-xl font-bold text-[#2E241E] font-playfair">Sedang Memuat Halaman...</h2>
+            <p className="text-xs text-[#6B5C54] leading-relaxed">
+              Ada sedikit kendala saat memuat aset tampilan. Klik tombol di bawah untuk memuat ulang halaman secara bersih.
+            </p>
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                onClick={this.handleReload}
+                className="w-full py-3 rounded-full bg-pink-500 hover:bg-pink-600 text-white font-bold text-xs tracking-wider uppercase transition-colors shadow-xs cursor-pointer"
+              >
+                Muat Ulang Halaman ↻
+              </button>
+              <button
+                onClick={this.handleReset}
+                className="w-full py-2.5 rounded-full bg-stone-100 hover:bg-stone-200 text-[#4A3E39] font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Kembali ke Beranda
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   return (
-    <AuthProvider>
-      <StoreProvider>
-        <MainApp />
-      </StoreProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <StoreProvider>
+          <MainApp />
+        </StoreProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
