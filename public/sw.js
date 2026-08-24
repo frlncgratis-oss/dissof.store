@@ -1,4 +1,6 @@
-// Main Service Worker for DISSOF.ID - Background Push & iOS PWA Notifications
+// Service Worker for DISSOF.ID - Web Push Notifications for Admin (iOS / Android / Desktop)
+const CACHE_NAME = 'dissof-v1';
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -7,29 +9,30 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// Handle incoming Web Push notifications (even when app is closed / screen is off)
+// Handle incoming Web Push from Server (Apple APNs / Google FCM / W3C Push Service)
 self.addEventListener('push', (event) => {
   let data = {};
-  try {
-    if (event.data) {
+  
+  if (event.data) {
+    try {
       data = event.data.json();
+    } catch (e) {
+      data = { body: event.data.text() };
     }
-  } catch (e) {
-    data = { body: event.data ? event.data.text() : 'Pesanan baru masuk ke toko DISSOF.ID!' };
   }
 
-  const title = data.title || data.notification?.title || 'Pesanan Baru Masuk! 💖 DISSOF.ID';
+  const title = data.title || 'Pesanan Baru Masuk! 🛍️💖';
   const options = {
-    body: data.body || data.notification?.body || 'Ada pesanan baru masuk! Periksa bukti transfer dan siapkan pesanan.',
-    icon: data.icon || data.notification?.icon || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=192&auto=format&fit=crop&q=80',
-    badge: 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=96&auto=format&fit=crop&q=80',
-    vibrate: [200, 100, 200, 100, 400],
+    body: data.body || 'Ada pesanan baru masuk ke toko DISSOF.ID! Periksa detail pesanan segera.',
+    icon: data.icon || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=192&auto=format&fit=crop&q=80',
+    badge: data.badge || 'https://images.unsplash.com/photo-1611591475152-4735d38d0145?w=96&auto=format&fit=crop&q=80',
     tag: 'dissof-order-alert',
     renotify: true,
     requireInteraction: true,
+    vibrate: [200, 100, 200, 100, 400],
     data: {
-      url: data.url || '/',
-      orderId: data.orderId || null,
+      url: data.data?.url || data.url || '/',
+      orderId: data.data?.orderId || data.orderId || null,
       timestamp: Date.now()
     }
   };
@@ -39,13 +42,14 @@ self.addEventListener('push', (event) => {
   );
 });
 
-// Handle notification click: focus or open Admin orders tab
+// Handle notification click: Open or focus Admin Orders tab
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // If a window is already open, focus it and dispatch event
       for (const client of clientList) {
         if ('focus' in client) {
           client.focus();
@@ -56,6 +60,7 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
+      // If not open, open a new window
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
@@ -63,7 +68,7 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Allow client window to request notification display via service worker (critical for iOS Safari)
+// Allow client window to request notification display via service worker (for in-browser triggers)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;

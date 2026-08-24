@@ -5,6 +5,12 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { db } from './db';
 import { generateToken, requireAdmin, AuthenticatedRequest } from './auth';
+import { 
+  getVapidPublicKey, 
+  saveSubscription, 
+  sendPushToAllAdmins, 
+  getStoredSubscriptions 
+} from './push';
 
 const router = express.Router();
 
@@ -434,6 +440,100 @@ router.delete('/testimonials/:id', requireAdmin, (req: AuthenticatedRequest, res
 router.get('/stats', requireAdmin, (_req: AuthenticatedRequest, res: Response) => {
   const stats = db.getDashboardStats();
   res.json(stats);
+});
+
+// ==================== WEB PUSH NOTIFICATIONS ====================
+// 1. Get VAPID Public Key for client subscription
+router.get('/push/vapid-public-key', (_req: Request, res: Response) => {
+  const publicKey = getVapidPublicKey();
+  res.json({ publicKey });
+});
+
+// 2. Save Admin Push Subscription (from iPhone / Browser PushManager)
+router.post('/push/subscribe', (req: Request, res: Response) => {
+  const { subscription, metadata } = req.body;
+
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ error: 'Data subscription push tidak valid!' });
+  }
+
+  const record = saveSubscription(subscription, metadata);
+  console.log(`📱 [Web Push API] Admin device subscription saved: ${record.id} (${record.platform})`);
+
+  res.status(201).json({
+    message: 'Subscription Web Push Admin berhasil didaftarkan ♡',
+    id: record.id
+  });
+});
+
+// 3. Trigger Web Push for New Orders (Called when customer places order)
+router.post('/push/notify-new-order', async (req: Request, res: Response) => {
+  const { orderId, customerName, totalPrice, itemsCount } = req.body;
+
+  const formattedPrice = totalPrice 
+    ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(totalPrice)
+    : '';
+
+  const title = 'Pesanan Baru Masuk! 🛍️💖';
+  const body = customerName 
+    ? `${customerName} baru saja membuat pesanan ${orderId ? `#${orderId}` : ''} (${itemsCount || 1} item${formattedPrice ? ` • ${formattedPrice}` : ''})`
+    : `Ada pesanan baru masuk${orderId ? ` #${orderId}` : ''}! Segera periksa bukti transfer & siapkan pesanan.`;
+
+  try {
+    const result = await sendPushToAllAdmins({
+      title,
+      body,
+      url: '/',
+      orderId: orderId || undefined,
+      totalPrice: totalPrice || undefined,
+      customerName: customerName || undefined
+    });
+
+    res.json({
+      message: 'Sinyal Web Push berhasil diproses ♡',
+      result
+    });
+  } catch (err: any) {
+    console.error('Error triggering Web Push for new order:', err);
+    res.status(500).json({
+      error: 'Gagal mengirim Web Push ke device admin',
+      details: err.message
+    });
+  }
+});
+
+// 4. Test Web Push (For Admin Dashboard verification)
+router.post('/push/test', async (req: Request, res: Response) => {
+  try {
+    const result = await sendPushToAllAdmins({
+      title: '🛍️ [Tes Web Push] DISSOF.ID',
+      body: 'Sistem Web Push Notification iOS & Android berhasil terhubung ke server! 🎉',
+      url: '/',
+      orderId: 'TEST-ORDER'
+    });
+
+    res.json({
+      message: 'Tes Web Push berhasil dieksekusi',
+      result
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Gagal mengirim tes Web Push', details: err.message });
+  }
+});
+
+// 5. Check Push Subscription Count
+router.get('/push/status', (_req: Request, res: Response) => {
+  const subs = getStoredSubscriptions();
+  res.json({
+    totalDevices: subs.length,
+    devices: subs.map(s => ({
+      id: s.id,
+      platform: s.platform,
+      device: s.device,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt
+    }))
+  });
 });
 
 export default router;

@@ -37,6 +37,7 @@ import {
   isBrowserNotificationSupported
 } from '../../lib/utils';
 import { registerAdminFCMToken } from '../../lib/firebase';
+import { registerAdminPushSubscription, testServerWebPush } from '../../lib/pushClient';
 import { ImageWithFallback } from '../../components/common/ImageWithFallback';
 
 export const AdminOrdersPage: React.FC = () => {
@@ -60,11 +61,15 @@ export const AdminOrdersPage: React.FC = () => {
       const currentPerm = Notification.permission;
       setNotificationPermission(currentPerm);
       if (currentPerm === 'granted') {
-        registerAdminFCMToken()
-          .then((token) => {
-            if (token) setFcmTokenStatus('saved');
+        // Register Web Push subscription to server
+        registerAdminPushSubscription()
+          .then((res) => {
+            if (res.success) setFcmTokenStatus('saved');
           })
           .catch(() => {});
+
+        // Backup FCM
+        registerAdminFCMToken().catch(() => {});
       }
     }
   }, []);
@@ -91,18 +96,34 @@ export const AdminOrdersPage: React.FC = () => {
     }
   };
 
-  const handleTestChime = () => {
+  const handleTestChime = async () => {
     playNotificationChime();
+    
+    // 1. In-app pop-up
     if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
       sendBrowserNotification('🛍️ [Uji Notifikasi] Pesanan DISSOF', {
         body: 'Tes lonceng chime dan sistem push notifikasi iPhone/HP admin berfungsi optimal!',
         orderId: 'TEST-001'
       });
-      setTestNotificationFeedback('Suara chime berbunyi & pop-up sistem berhasil dikirim ♡');
-    } else {
-      setTestNotificationFeedback('Suara lonceng chime kasir berbunyi ♡');
     }
-    setTimeout(() => setTestNotificationFeedback(''), 3500);
+
+    // 2. Real Server Web Push to APNs / FCM
+    try {
+      setTestNotificationFeedback('Mengirim tes Web Push via server VAPID...');
+      const serverRes = await testServerWebPush();
+      const successCount = serverRes?.result?.successCount ?? 0;
+      const totalDevices = serverRes?.result?.total ?? 0;
+
+      if (totalDevices > 0) {
+        setTestNotificationFeedback(`✅ Web Push terkirim ke ${successCount}/${totalDevices} HP/Perangkat Admin terdaftar!`);
+      } else {
+        setTestNotificationFeedback('🔔 Suara lonceng berbunyi (Belum ada subscription Web Push aktif, klik "Aktifkan Web Push")');
+      }
+    } catch {
+      setTestNotificationFeedback('🔔 Suara lonceng chime kasir berbunyi ♡');
+    }
+
+    setTimeout(() => setTestNotificationFeedback(''), 4500);
   };
 
   const handleRequestPermission = async () => {
@@ -112,22 +133,23 @@ export const AdminOrdersPage: React.FC = () => {
     if (perm === 'granted') {
       playNotificationChime();
       try {
-        const token = await registerAdminFCMToken();
-        if (token) {
+        const pushRes = await registerAdminPushSubscription();
+        if (pushRes.success) {
           setFcmTokenStatus('saved');
         } else {
           setFcmTokenStatus('saved');
         }
+        registerAdminFCMToken().catch(() => {});
       } catch (err) {
-        console.warn('FCM registration error:', err);
+        console.warn('Push registration error:', err);
         setFcmTokenStatus('failed');
       }
 
-      sendBrowserNotification('🎉 Notifikasi Pesanan DISSOF Aktif!', {
-        body: 'HP Admin siap menerima pop-up & suara setiap pesanan baru masuk secara real-time.',
+      sendBrowserNotification('🎉 Web Push DISSOF.ID Aktif!', {
+        body: 'HP Admin siap menerima pop-up sistem & suara setiap pesanan baru masuk.',
       });
-      setTestNotificationFeedback('Izin notifikasi & token background HP Admin berhasil diaktifkan ♡');
-      setTimeout(() => setTestNotificationFeedback(''), 3500);
+      setTestNotificationFeedback('Izin notifikasi & Web Push server VAPID berhasil diaktifkan ♡');
+      setTimeout(() => setTestNotificationFeedback(''), 4500);
     } else {
       setFcmTokenStatus('failed');
     }
@@ -183,10 +205,8 @@ export const AdminOrdersPage: React.FC = () => {
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Notifikasi HP Admin Aktif</span>
-              {fcmTokenStatus === 'saved' && (
-                <span className="text-[10px] bg-emerald-200/60 text-emerald-900 px-1.5 py-0.5 rounded-full font-semibold">FCM Sync</span>
-              )}
+              <span>Web Push Server Aktif</span>
+              <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded-full font-bold">VAPID APNs</span>
             </div>
           ) : (
             <button
@@ -194,10 +214,10 @@ export const AdminOrdersPage: React.FC = () => {
               onClick={handleRequestPermission}
               disabled={fcmTokenStatus === 'registering'}
               className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-75"
-              title="Aktifkan notifikasi browser pop-up & background push"
+              title="Aktifkan Web Push Notification untuk iPhone / Android"
             >
               <Bell className="w-3.5 h-3.5" />
-              <span>{fcmTokenStatus === 'registering' ? 'Mendaftarkan Token...' : 'Aktifkan Notifikasi Pop-up'}</span>
+              <span>{fcmTokenStatus === 'registering' ? 'Menghubungkan Server...' : 'Aktifkan Web Push HP'}</span>
             </button>
           )}
 
@@ -205,10 +225,10 @@ export const AdminOrdersPage: React.FC = () => {
             type="button"
             onClick={handleTestChime}
             className="px-3.5 py-2 rounded-2xl bg-white border border-pink-200 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer"
-            title="Tes Suara Notifikasi Pesanan Masuk"
+            title="Tes Suara Chime & Kirim Sinyal Web Push ke HP"
           >
             <Volume2 className="w-3.5 h-3.5 text-pink-500" />
-            <span>Tes Suara &amp; Pop-up</span>
+            <span>Tes Web Push &amp; Suara</span>
           </button>
         </div>
       </div>

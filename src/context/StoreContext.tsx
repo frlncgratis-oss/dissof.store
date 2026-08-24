@@ -60,6 +60,7 @@ import {
   getBrandingBackupMetadata,
   markBrandingBackupSynced
 } from '../lib/utils';
+import { triggerOrderWebPush } from '../lib/pushClient';
 import confetti from 'canvas-confetti';
 
 const PRODUCTS_STORAGE_KEY = 'products';
@@ -1284,6 +1285,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.warn('Failed to sync new order to Firestore (saved locally):', e);
       }
     }
+
+    // 🚀 Trigger Backend Web Push Notification (Sends VAPID Push to Apple APNs / iPhone Admin even when closed/locked)
+    triggerOrderWebPush({
+      orderId: newOrderId,
+      customerName: safeCustName,
+      totalPrice: Number(cartSubtotal) || 0,
+      itemsCount: orderItems.length
+    }).catch((err) => console.warn('Could not fire Web Push trigger:', err));
 
     window.dispatchEvent(new CustomEvent('dissof_new_order', { detail: newOrder }));
     window.dispatchEvent(new Event('dissof_orders_updated'));
