@@ -60,6 +60,7 @@ import {
   getBrandingBackupMetadata,
   markBrandingBackupSynced
 } from '../lib/utils';
+import { uploadImageToImgBB } from '../lib/imgbb';
 import { triggerOrderWebPush } from '../lib/pushClient';
 import confetti from 'canvas-confetti';
 
@@ -1075,12 +1076,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const category = categories.find((c) => c.id === productData.category_id);
     const categoryName = category?.name || productData.category_name || 'Accessories';
 
-    // 1. Hard-compress all base64 images to guaranteed <= 200 KB before saving
-    let compressedImages: string[] = [];
+    // 1. Process images: Upload base64 images to ImgBB API for direct cloud URLs
+    let uploadedImages: string[] = [];
     if (productData.images && productData.images.length > 0) {
-      compressedImages = await Promise.all(
+      uploadedImages = await Promise.all(
         productData.images.map(async (img) => {
-          if (img && (img.startsWith('data:') || img.length > 500)) {
+          if (!img) return '';
+          // If it's already an http/https URL (e.g. from ImgBB or CDN), keep it
+          if (img.startsWith('http://') || img.startsWith('https://')) {
+            return img;
+          }
+          // If it's base64, attempt ImgBB upload
+          if (img.startsWith('data:')) {
+            try {
+              const res = await uploadImageToImgBB(img);
+              if (res && res.url) {
+                return res.url;
+              }
+            } catch (imgbbErr) {
+              console.warn('ImgBB upload error during product save, falling back to compressed base64:', imgbbErr);
+            }
             try {
               return await hardCompressImage(img, 800, 0.6, 195);
             } catch {
@@ -1090,6 +1105,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return img;
         })
       );
+      uploadedImages = uploadedImages.filter(Boolean);
     }
 
     let updatedProduct: Product;
@@ -1115,7 +1131,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         details: productData.details || existingProd.details || [],
         variants: productData.variants || existingProd.variants || [],
         tags: productData.tags || existingProd.tags || [],
-        images: compressedImages.length > 0 ? compressedImages : (productData.images || existingProd.images || []),
+        images: uploadedImages.length > 0 ? uploadedImages : (productData.images || existingProd.images || []),
         is_best_seller: productData.is_best_seller !== undefined ? Boolean(productData.is_best_seller) : Boolean(existingProd.is_best_seller),
         is_sold_out: productData.is_sold_out !== undefined ? Boolean(productData.is_sold_out) : Boolean(existingProd.is_sold_out),
         is_visible: productData.is_visible !== undefined ? Boolean(productData.is_visible) : (existingProd.is_visible !== false),
@@ -1143,7 +1159,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         details: productData.details || [],
         variants: productData.variants || [],
         tags: productData.tags || [],
-        images: compressedImages.length > 0 ? compressedImages : (productData.images || []),
+        images: uploadedImages.length > 0 ? uploadedImages : (productData.images || []),
         is_best_seller: Boolean(productData.is_best_seller),
         is_sold_out: Boolean(productData.is_sold_out),
         is_visible: productData.is_visible !== false,

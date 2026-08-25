@@ -137,6 +137,7 @@ export const AdminOrdersPage: React.FC = () => {
       total: 15000,
       payment_method: 'qris',
       status: 'Pending',
+      source: 'online',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

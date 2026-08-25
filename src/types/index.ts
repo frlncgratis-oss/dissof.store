@@ -149,6 +149,7 @@ export interface SiteSettings {
   banner_image?: string;
   shopee_url?: string;
   tiktok_url?: string;
+  imgbb_api_key?: string;
 }
 
 export interface AdminUser {

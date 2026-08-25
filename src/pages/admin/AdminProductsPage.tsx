@@ -21,7 +21,18 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Product } from '../../types';
-import { formatIDR, compressImageFile, hardCompressImage, getImageSizeInKB } from '../../lib/utils';
+import { 
+  formatIDR, 
+  compressImageFile, 
+  hardCompressImage, 
+  getImageSizeInKB 
+} from '../../lib/utils';
+import { 
+  uploadImageToImgBB, 
+  getActiveImgBBKey, 
+  saveCustomImgBBKey, 
+  IMGBB_STORAGE_KEY 
+} from '../../lib/imgbb';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
 
@@ -58,9 +69,20 @@ export const AdminProductsPage: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
   
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // ImgBB API Key settings
+  const [showImgBBSettings, setShowImgBBSettings] = useState(false);
+  const [imgbbKeyInput, setImgbbKeyInput] = useState(() => {
+    try {
+      return localStorage.getItem(IMGBB_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -89,41 +111,54 @@ export const AdminProductsPage: React.FC = () => {
   };
 
   const handleCropComplete = async (croppedBase64: string) => {
+    setUploadingImage(true);
+    setUploadProgressText('Mengunggah hasil crop foto ke ImgBB API gratis...');
     try {
-      // Ensure hard compression <= 200KB on cropped image
-      const compressedCrop = await hardCompressImage(croppedBase64, 800, 0.6, 195);
+      // 1. Upload cropped image directly to ImgBB
+      const res = await uploadImageToImgBB(croppedBase64);
+      const directUrl = res.url || res.displayUrl || croppedBase64;
+
       if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
         setImages((prev) => {
           const next = [...prev];
-          next[cropTargetIndex] = compressedCrop;
+          next[cropTargetIndex] = directUrl;
           return next;
         });
-        showToast(`Foto #${cropTargetIndex + 1} berhasil di-crop & dikompres (< 200 KB)!`);
+        showToast(`Foto #${cropTargetIndex + 1} berhasil di-crop & diunggah ke ImgBB!`);
       } else {
         setImages((prev) => {
           const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
-          return [...filtered, compressedCrop];
+          return [...filtered, directUrl];
         });
-        showToast('Foto baru berhasil di-crop & dikompres (< 200 KB)!');
+        showToast('Foto baru berhasil di-crop & diunggah ke ImgBB!');
       }
-    } catch (err) {
-      console.warn('Crop compress fallback:', err);
-      if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
-        setImages((prev) => {
-          const next = [...prev];
-          next[cropTargetIndex] = croppedBase64;
-          return next;
-        });
-      } else {
-        setImages((prev) => {
-          const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
-          return [...filtered, croppedBase64];
-        });
+    } catch (err: any) {
+      console.warn('ImgBB crop upload warning, applying fallback compression:', err);
+      try {
+        const compressedCrop = await hardCompressImage(croppedBase64, 800, 0.6, 195);
+        if (cropTargetIndex !== null && cropTargetIndex >= 0 && cropTargetIndex < images.length) {
+          setImages((prev) => {
+            const next = [...prev];
+            next[cropTargetIndex] = compressedCrop;
+            return next;
+          });
+        } else {
+          setImages((prev) => {
+            const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
+            return [...filtered, compressedCrop];
+          });
+        }
+        showToast('Foto tersimpan secara offline.');
+      } catch {
+        // ignore
       }
+    } finally {
+      setUploadingImage(false);
+      setUploadProgressText('');
+      setCropModalOpen(false);
+      setCropImageSrc(null);
+      setCropTargetIndex(null);
     }
-    setCropModalOpen(false);
-    setCropImageSrc(null);
-    setCropTargetIndex(null);
   };
 
   const handleUploadWithCrop = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,6 +174,13 @@ export const AdminProductsPage: React.FC = () => {
     };
     reader.readAsDataURL(file);
     if (e.target) e.target.value = '';
+  };
+
+  const handleSaveImgBBKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveCustomImgBBKey(imgbbKeyInput.trim());
+    setShowImgBBSettings(false);
+    showToast(imgbbKeyInput.trim() ? 'API Key ImgBB Kustom berhasil disimpan!' : 'Menggunakan API Key ImgBB bawaan.');
   };
 
   const openAddModal = () => {
@@ -207,39 +249,55 @@ export const AdminProductsPage: React.FC = () => {
     }
   };
 
-  // Upload and compress files from mobile gallery / PC camera with hard compression (<200KB)
+  // Upload files from mobile gallery / PC camera directly to ImgBB Free API
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setUploadingImage(true);
     setErrorMsg('');
+    setUploadProgressText(`Mempersiapkan ${files.length} foto untuk diunggah ke ImgBB API gratis...`);
 
     try {
-      const compressedUrls: string[] = [];
+      const uploadedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        setUploadProgressText(`Mengunggah foto (${i + 1}/${files.length}): ${file.name} ke ImgBB API...`);
         try {
-          // Hard compress to max 800px, 0.6 quality, strictly < 200 KB
-          const compressed = await hardCompressImage(file, 800, 0.6, 195);
-          compressedUrls.push(compressed);
+          // Upload directly to ImgBB API
+          const res = await uploadImageToImgBB(file);
+          if (res && res.url) {
+            uploadedUrls.push(res.url);
+          }
         } catch (imgErr: any) {
-          console.warn('Image compress warning:', imgErr);
-          setErrorMsg(imgErr.message || `Gagal memproses file "${file.name}". Gunakan foto format JPG/PNG.`);
+          console.warn('ImgBB direct file upload error, trying compressed fallback:', imgErr);
+          try {
+            // Compress and retry upload to ImgBB
+            const compressed = await hardCompressImage(file, 800, 0.6, 195);
+            const fallbackRes = await uploadImageToImgBB(compressed);
+            if (fallbackRes && fallbackRes.url) {
+              uploadedUrls.push(fallbackRes.url);
+            } else {
+              uploadedUrls.push(compressed);
+            }
+          } catch {
+            setErrorMsg(imgErr.message || `Gagal mengunggah file "${file.name}" ke ImgBB.`);
+          }
         }
       }
 
-      if (compressedUrls.length > 0) {
+      if (uploadedUrls.length > 0) {
         setImages((prev) => {
           const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
-          return [...filtered, ...compressedUrls];
+          return [...filtered, ...uploadedUrls];
         });
-        showToast(`${compressedUrls.length} foto berhasil diunggah & dikompres (< 200 KB)!`);
+        showToast(`${uploadedUrls.length} foto berhasil diunggah ke ImgBB & siap disimpan ke Firestore!`);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memproses foto dari perangkat.');
+      setErrorMsg(err.message || 'Gagal memproses unggah foto ke ImgBB.');
     } finally {
       setUploadingImage(false);
+      setUploadProgressText('');
       if (e.target) e.target.value = '';
     }
   };
@@ -308,7 +366,7 @@ export const AdminProductsPage: React.FC = () => {
     });
   };
 
-  // Save product (Add or Edit) with LocalStorage persistence
+  // Save product (Add or Edit) with ImgBB upload and Cloud Firestore persistence
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -327,30 +385,45 @@ export const AdminProductsPage: React.FC = () => {
     setIsSaving(true);
     setErrorMsg('');
 
-    const validImages = images.length > 0 ? images : [FALLBACK_PRODUCT_IMAGE];
-
-    const payload: Partial<Product> = {
-      name: name.trim(),
-      category_id: categoryId,
-      price: Number(price),
-      original_price: originalPrice && !isNaN(Number(originalPrice)) ? Number(originalPrice) : undefined,
-      stock: stock && !isNaN(Number(stock)) ? Number(stock) : 10,
-      description: description.trim(),
-      details: detailsText.split('\n').map((s) => s.trim()).filter(Boolean),
-      variants: variantsText.split(',').map((s) => s.trim()).filter(Boolean),
-      tags: tagsText.split(',').map((s) => s.trim()).filter(Boolean),
-      images: validImages,
-      is_best_seller: isBestSeller,
-      is_sold_out: isSoldOut || Number(stock) === 0,
-      is_visible: isVisible,
-    };
-
     try {
-      // Save directly to Cloud Firestore & Local fallback
+      // 1. If any base64 images remain, upload them to ImgBB before saving
+      const finalProcessedImages = await Promise.all(
+        images.map(async (img) => {
+          if (img && img.startsWith('data:')) {
+            try {
+              const res = await uploadImageToImgBB(img);
+              if (res && res.url) return res.url;
+            } catch (err) {
+              console.warn('ImgBB fallback on save:', err);
+            }
+          }
+          return img;
+        })
+      );
+
+      const validImages = finalProcessedImages.length > 0 ? finalProcessedImages : [FALLBACK_PRODUCT_IMAGE];
+
+      const payload: Partial<Product> = {
+        name: name.trim(),
+        category_id: categoryId,
+        price: Number(price),
+        original_price: originalPrice && !isNaN(Number(originalPrice)) ? Number(originalPrice) : undefined,
+        stock: stock && !isNaN(Number(stock)) ? Number(stock) : 10,
+        description: description.trim(),
+        details: detailsText.split('\n').map((s) => s.trim()).filter(Boolean),
+        variants: variantsText.split(',').map((s) => s.trim()).filter(Boolean),
+        tags: tagsText.split(',').map((s) => s.trim()).filter(Boolean),
+        images: validImages,
+        is_best_seller: isBestSeller,
+        is_sold_out: isSoldOut || Number(stock) === 0,
+        is_visible: isVisible,
+      };
+
+      // 2. Save directly to Cloud Firestore & Local cache
       await saveProductLocal(payload, editingProduct?.id);
 
       // Show toast confirmation
-      showToast('Perubahan Berhasil Disimpan!');
+      showToast('Produk & Foto Berhasil Disimpan ke Firestore!');
 
       // Automatically close modal and reset error
       setModalOpen(false);
@@ -700,32 +773,100 @@ export const AdminProductsPage: React.FC = () => {
               <div className="space-y-3 bg-[#F9F7F2] p-4 rounded-2xl border border-black/5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <div>
-                    <label className="font-bold text-[#2D2D2D] flex items-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-[#FF9AA2]" />
-                      <span>Galeri Foto Produk ({images.length} foto)</span>
-                      <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="font-bold text-[#2D2D2D] flex items-center gap-1.5">
+                        <ImageIcon className="w-4 h-4 text-[#FF9AA2]" />
+                        <span>Galeri Foto Produk ({images.length} foto)</span>
+                        <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        ImgBB API Gratis
+                      </span>
+                    </div>
                     <p className="text-[10px] text-[#A08C8C] mt-0.5">
-                      Mendukung 3 s/d 5+ foto per produk. Foto #{1} otomatis jadi <b>Cover Utama</b> di etalase.
+                      Unggah foto langsung ke server ImgBB gratis. Foto #{1} otomatis jadi <b>Cover Utama</b> di etalase toko.
                     </p>
                   </div>
 
-                  {/* Add More Photo Button */}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingImage}
-                    className="self-start sm:self-auto px-3.5 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-[11px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Tambah Foto Lain</span>
-                  </button>
+                  {/* Add More Photo Button & ImgBB Config */}
+                  <div className="flex items-center gap-2 mt-1 sm:mt-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowImgBBSettings(!showImgBBSettings)}
+                      className="px-2.5 py-1.5 rounded-xl bg-white border border-black/10 hover:bg-[#F9F7F2] text-[#63534B] font-bold text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                      title="Atur API Key ImgBB Kustom"
+                    >
+                      <Sparkles className="w-3 h-3 text-[#FF9AA2]" />
+                      <span>API Key ImgBB</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingImage}
+                      className="px-3.5 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-[11px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Unggah Foto</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Optional ImgBB API Key Drawer */}
+                {showImgBBSettings && (
+                  <div className="bg-white p-3.5 rounded-2xl border border-pink-200 shadow-xs space-y-2 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-xs text-[#2D2D2D]">Konfigurasi API Key ImgBB (Opsional)</p>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowImgBBSettings(false)}
+                        className="text-gray-400 hover:text-gray-700"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[#A08C8C]">
+                      DISSOF sudah menyertakan kunci API ImgBB bawaan gratis aktif. Anda juga bisa memasukkan API Key dari akun ImgBB Anda sendiri (dapatkan gratis di <b>api.imgbb.com</b>).
+                    </p>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text"
+                        placeholder="Contoh: 6d207e02198a847aa5fb3ac505b3cf6b (atau kosongkan untuk default)"
+                        value={imgbbKeyInput}
+                        onChange={(e) => setImgbbKeyInput(e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded-xl border border-black/10 text-xs bg-[#F9F7F2] font-mono focus:outline-none focus:ring-1 focus:ring-[#FF9AA2]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveImgBBKey}
+                        className="px-3.5 py-1.5 rounded-xl bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs cursor-pointer"
+                      >
+                        Simpan Key
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Loading Indicator for Image Upload */}
+                {uploadingImage && (
+                  <div className="bg-pink-50 border-2 border-dashed border-pink-400 p-4 rounded-2xl flex items-center gap-3 shadow-xs animate-pulse">
+                    <RefreshCw className="w-5 h-5 text-pink-600 animate-spin shrink-0" />
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-xs text-pink-900">
+                        {uploadProgressText || 'Sedang Mengunggah Foto ke ImgBB API gratis...'}
+                      </p>
+                      <p className="text-[10px] text-pink-700">
+                        Foto diproses dan diunggah langsung ke server CDN ImgBB. URL gambar akan otomatis tersimpan ke Firestore.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Thumbnails grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {images.map((img, idx) => {
                     const sizeKB = getImageSizeInKB(img);
+                    const isImgBB = img.includes('ibb.co') || img.includes('imgbb');
                     return (
                       <div 
                         key={idx} 
@@ -754,8 +895,15 @@ export const AdminProductsPage: React.FC = () => {
                               </span>
                             )}
 
+                            {/* ImgBB badge if hosted on ImgBB */}
+                            {isImgBB && (
+                              <span className="bg-blue-600/90 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
+                                ImgBB
+                              </span>
+                            )}
+
                             {/* Ultra-light size badge */}
-                            {sizeKB > 0 && (
+                            {!isImgBB && sizeKB > 0 && (
                               <span className="bg-emerald-800/80 text-emerald-100 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
                                 {sizeKB} KB
                               </span>
@@ -778,7 +926,7 @@ export const AdminProductsPage: React.FC = () => {
                               type="button"
                               onClick={(e) => handleRemoveImage(idx, e)}
                               className="w-6 h-6 rounded-full bg-[#FF9AA2] hover:bg-rose-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer pointer-events-auto"
-                              title="Hapus foto dari galeri"
+                              title="Hapus foto dari produk"
                             >
                               <X className="w-3.5 h-3.5 stroke-[3]" />
                             </button>
@@ -829,12 +977,18 @@ export const AdminProductsPage: React.FC = () => {
 
                   {/* Upload Card: Phone / Device Gallery */}
                   <label 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="rounded-2xl border-2 border-dashed border-[#FF9AA2] hover:border-[#FFB7B2] bg-white text-[#FF9AA2] cursor-pointer flex flex-col items-center justify-center p-3 aspect-square transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs group"
+                    onClick={() => !uploadingImage && fileInputRef.current?.click()}
+                    className={`rounded-2xl border-2 border-dashed border-[#FF9AA2] hover:border-[#FFB7B2] bg-white text-[#FF9AA2] cursor-pointer flex flex-col items-center justify-center p-3 aspect-square transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xs group ${
+                      uploadingImage ? 'opacity-50 pointer-events-none' : ''
+                    }`}
                   >
-                    <Upload className="w-5 h-5 mb-1 group-hover:scale-110 transition-transform" />
+                    {uploadingImage ? (
+                      <RefreshCw className="w-5 h-5 mb-1 animate-spin text-[#FF9AA2]" />
+                    ) : (
+                      <Upload className="w-5 h-5 mb-1 group-hover:scale-110 transition-transform" />
+                    )}
                     <span className="text-[10px] font-bold text-center">
-                      {uploadingImage ? 'Mengunggah...' : '+ Unggah Foto'}
+                      {uploadingImage ? 'Mengunggah...' : '+ Unggah Foto (ImgBB)'}
                     </span>
                     <span className="text-[9px] text-[#A08C8C] text-center mt-0.5">Dari Galeri HP / PC</span>
                   </label>
@@ -867,7 +1021,7 @@ export const AdminProductsPage: React.FC = () => {
                       type="button"
                       onClick={() => cropUploadInputRef.current?.click()}
                       disabled={uploadingImage}
-                      className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                       title="Pilih foto dan langsung potong (crop) sesuai rasio terbaik"
                     >
                       <Crop className="w-3.5 h-3.5" />
@@ -878,20 +1032,20 @@ export const AdminProductsPage: React.FC = () => {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadingImage}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-[#FFD1DC] text-[#FF9AA2] hover:bg-[#FFEFF1] font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl bg-white border border-[#FFD1DC] text-[#FF9AA2] hover:bg-[#FFEFF1] font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingImage ? 'Sedang Memproses...' : 'Pilih File (Banyak)'}</span>
+                      <span>{uploadingImage ? 'Mengunggah ke ImgBB...' : 'Pilih File Gambar (Banyak)'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
                       disabled={uploadingImage}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-black/10 text-[#63534B] hover:bg-[#F9F7F2] font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl bg-white border border-black/10 text-[#63534B] hover:bg-[#F9F7F2] font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <Camera className="w-3.5 h-3.5 text-[#FF9AA2]" />
-                      <span>Kamera HP</span>
+                      <span>Kamera HP Langsung</span>
                     </button>
                   </div>
                 </div>
@@ -910,7 +1064,7 @@ export const AdminProductsPage: React.FC = () => {
                     <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A08C8C]" />
                     <input
                       type="url"
-                      placeholder="Atau tempel URL gambar web (https://...)"
+                      placeholder="Atau tempel URL gambar web / ImgBB (https://i.ibb.co/...)"
                       value={newImageUrl}
                       onChange={(e) => setNewImageUrl(e.target.value)}
                       onKeyDown={(e) => {
