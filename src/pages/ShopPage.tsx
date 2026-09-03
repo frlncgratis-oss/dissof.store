@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, Filter, Sparkles, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/common/ProductCard';
+import { ProductSkeletonLoader } from '../components/common/ProductSkeletonLoader';
 import { Product } from '../types';
 
 interface ShopPageProps {
@@ -15,7 +16,7 @@ export const ShopPage: React.FC<ShopPageProps> = ({
   onSelectProduct,
   onNavigate,
 }) => {
-  const { products, categories } = useStore();
+  const { products, categories, isProductsLoading } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'newest'>('featured');
@@ -154,7 +155,11 @@ export const ShopPage: React.FC<ShopPageProps> = ({
       </div>
 
       {/* Products Grid */}
-      {filteredProducts.length === 0 ? (
+      {isProductsLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-6">
+          <ProductSkeletonLoader count={8} />
+        </div>
+      ) : filteredProducts.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-pink-100 space-y-3">
           <div className="w-14 h-14 rounded-full bg-pink-50 text-pink-400 mx-auto flex items-center justify-center text-xl">
             ♡

@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, Heart, ArrowRight, ShoppingBag, Star, MapPin, Instagram, CheckCircle2, Wand2, ShieldCheck, Clock, Layers, MessageCircle } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { ProductCard } from '../components/common/ProductCard';
+import { ProductSkeletonLoader } from '../components/common/ProductSkeletonLoader';
 import { Product, Category } from '../types';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE, FALLBACK_AVATAR_IMAGE, FALLBACK_EVENT_IMAGE } from '../components/common/ImageWithFallback';
 import { createWhatsAppLink, getStoredWhatsAppNumber } from '../lib/utils';
@@ -14,7 +15,7 @@ interface HomePageProps {
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct }) => {
-  const { settings, categories, products, testimonials, events, storeHeroBanner } = useStore();
+  const { settings, categories, products, testimonials, events, storeHeroBanner, isProductsLoading } = useStore();
 
   const brandName = settings?.brand_name || 'DISSOF.ID';
   const tagline = settings?.tagline || 'everything is heartmade♡';
@@ -230,13 +231,17 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onSelectProduct 
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6">
-            {featuredProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onSelect={onSelectProduct}
-              />
-            ))}
+            {isProductsLoading ? (
+              <ProductSkeletonLoader count={8} />
+            ) : (
+              featuredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onSelect={onSelectProduct}
+                />
+              ))
+            )}
           </div>
         </section>
       </StackedSection>

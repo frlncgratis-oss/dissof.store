@@ -61,7 +61,14 @@ import {
   markBrandingBackupSynced
 } from '../lib/utils';
 import { uploadImageToImgBB } from '../lib/imgbb';
+import {
+  uploadProductImageToSupabase,
+  saveProductToSupabaseDatabase,
+  fetchProductsFromSupabase,
+  preloadImages,
+} from '../lib/supabase';
 import { triggerOrderWebPush } from '../lib/pushClient';
+import { FALLBACK_PRODUCT_IMAGE } from '../components/common/ImageWithFallback';
 import confetti from 'canvas-confetti';
 
 const PRODUCTS_STORAGE_KEY = 'products';
@@ -329,6 +336,8 @@ interface StoreContextType {
   wishlist: string[];
   isCartOpen: boolean;
   isLoading: boolean;
+  isProductsLoading: boolean;
+  loadingFadeOut: boolean;
   isOnlineSynced: boolean;
   storeLogo: string | null;
   storeHeroBanner: string | null;
@@ -480,6 +489,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [events, setEvents] = useState<EventItem[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isProductsLoading, setIsProductsLoading] = useState<boolean>(true);
+  const [loadingFadeOut, setLoadingFadeOut] = useState<boolean>(false);
 
   // Store Logo, Hero Banner & Background
   const [storeLogo, setStoreLogo] = useState<string | null>(() => getStoredLogo());
@@ -526,6 +537,87 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Ref to track initial Firestore snapshot load so existing orders don't re-trigger notification popups
   const isFirstOrdersSnapshot = React.useRef(true);
+
+  // =========================================================================
+  // INITIAL PRODUCT FETCHING FROM SUPABASE WITH SMOOTH FADE-OUT LOADING SCREEN
+  // =========================================================================
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSupabaseProducts = async () => {
+      try {
+        console.log('🔄 [Supabase] Mengambil data produk...');
+        const supabaseProducts = await fetchProductsFromSupabase();
+
+        if (isMounted && Array.isArray(supabaseProducts) && supabaseProducts.length > 0) {
+          console.log(`✅ [Supabase] Berhasil memuat ${supabaseProducts.length} produk!`);
+          
+          const formattedProducts: Product[] = supabaseProducts.map((p: any) => {
+            const rawImages = Array.isArray(p.images) && p.images.length > 0
+              ? p.images
+              : (p.image_url ? [p.image_url] : []);
+            const validImages = rawImages.length > 0 ? rawImages : [FALLBACK_PRODUCT_IMAGE];
+
+            return {
+              id: String(p.id),
+              name: p.name || 'Aksesoris Handmade',
+              slug: p.slug || (p.name ? p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `prod-${p.id}`),
+              category_id: p.category_id || 'all',
+              category_name: p.category_name || 'Accessories',
+              price: Number(p.price) || 0,
+              original_price: p.original_price ? Number(p.original_price) : undefined,
+              stock: p.stock !== undefined ? Number(p.stock) : 10,
+              description: p.description || '',
+              details: Array.isArray(p.details) ? p.details : [],
+              variants: Array.isArray(p.variants) ? p.variants : [],
+              tags: Array.isArray(p.tags) ? p.tags : [],
+              images: validImages,
+              is_best_seller: Boolean(p.is_best_seller),
+              is_sold_out: Boolean(p.is_sold_out),
+              is_visible: p.is_visible !== undefined ? Boolean(p.is_visible) : true,
+              rating: p.rating ? Number(p.rating) : 5,
+              review_count: p.review_count ? Number(p.review_count) : 0,
+              created_at: p.created_at || new Date().toISOString(),
+              updated_at: p.updated_at || new Date().toISOString(),
+            };
+          });
+
+          // Preload product image URLs so images render crisp without popping
+          const allImageUrls = formattedProducts.flatMap((p) => p.images || []);
+          await preloadImages(allImageUrls);
+
+          if (isMounted) {
+            setProducts(formattedProducts);
+            safeLocalStorageSet(PRODUCTS_STORAGE_KEY, JSON.stringify(formattedProducts));
+            idbSaveAll('products', formattedProducts).catch(() => {});
+          }
+        } else {
+          // If no products returned yet or db empty, preload default initial product images
+          const fallbackImages = DEFAULT_INITIAL_PRODUCTS.flatMap((p) => p.images || []);
+          await preloadImages(fallbackImages);
+        }
+      } catch (err) {
+        console.warn('[Supabase] Catatan saat mengambil produk:', err);
+      } finally {
+        if (isMounted) {
+          // Trigger smooth fade-out
+          setLoadingFadeOut(true);
+          // Wait 600ms for the CSS fade-out animation to finish smoothly
+          setTimeout(() => {
+            if (isMounted) {
+              setIsProductsLoading(false);
+            }
+          }, 600);
+        }
+      }
+    };
+
+    loadSupabaseProducts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // =========================================================================
   // 1. REAL-TIME FIRESTORE DATABASE LISTENERS (SYNC ACROSS ALL MOBILE & DESKTOP)
@@ -1076,25 +1168,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const category = categories.find((c) => c.id === productData.category_id);
     const categoryName = category?.name || productData.category_name || 'Accessories';
 
-    // 1. Process images: Upload base64 images to ImgBB API for direct cloud URLs
+    // 1. Process images: Upload base64 images to Supabase Storage ("Product-image")
     let uploadedImages: string[] = [];
     if (productData.images && productData.images.length > 0) {
       uploadedImages = await Promise.all(
         productData.images.map(async (img) => {
           if (!img) return '';
-          // If it's already an http/https URL (e.g. from ImgBB or CDN), keep it
+          // If it's already an http/https URL (e.g. from Supabase or CDN), keep it
           if (img.startsWith('http://') || img.startsWith('https://')) {
             return img;
           }
-          // If it's base64, attempt ImgBB upload
+          // If it's base64, attempt Supabase Storage upload
           if (img.startsWith('data:')) {
             try {
-              const res = await uploadImageToImgBB(img);
+              const res = await uploadProductImageToSupabase(img, productData.name);
               if (res && res.url) {
                 return res.url;
               }
-            } catch (imgbbErr) {
-              console.warn('ImgBB upload error during product save, falling back to compressed base64:', imgbbErr);
+            } catch (supaErr) {
+              console.warn('Supabase upload error during product save, trying ImgBB fallback:', supaErr);
+              try {
+                const imgbbRes = await uploadImageToImgBB(img);
+                if (imgbbRes && imgbbRes.url) return imgbbRes.url;
+              } catch {
+                // ignore
+              }
             }
             try {
               return await hardCompressImage(img, 800, 0.6, 195);
@@ -1196,6 +1294,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         console.warn('Firebase sync warning (product safely saved in local offline cache):', e);
       }
+    }
+
+    // 5. Sync product along with public image_url to Supabase database (table "products")
+    try {
+      await saveProductToSupabaseDatabase({
+        ...updatedProduct,
+        image_url: updatedProduct.images?.[0] || '',
+      });
+    } catch (supaErr) {
+      console.warn('Supabase DB product sync notice:', supaErr);
     }
 
     return updatedProduct;
@@ -1551,6 +1659,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         wishlist,
         isCartOpen,
         isLoading,
+        isProductsLoading,
+        loadingFadeOut,
         isOnlineSynced,
         storeLogo,
         storeHeroBanner,

@@ -25,11 +25,12 @@ import { AdminTestimonialsPage } from './pages/admin/AdminTestimonialsPage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { AdminPaymentSettingsPage } from './pages/admin/AdminPaymentSettingsPage';
 import { AdminChangePasswordPage } from './pages/admin/AdminChangePasswordPage';
+import { LoadingScreen } from './components/common/LoadingScreen';
 import { Product } from './types';
 
 const MainApp: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const { isCartOpen, setIsCartOpen, settings, storeBackground } = useStore();
+  const { isCartOpen, setIsCartOpen, settings, storeBackground, isProductsLoading, loadingFadeOut } = useStore();
 
   // Navigation state
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -168,6 +169,15 @@ const MainApp: React.FC = () => {
       className="min-h-screen flex flex-col text-[#2D2D2D] selection:bg-[#FFEFF1] selection:text-[#2D2D2D] transition-colors duration-300 relative"
       style={customBgStyle}
     >
+      {/* 1. Animated Loading Screen during Supabase Product Fetching */}
+      {isProductsLoading && (
+        <LoadingScreen
+          isFadingOut={loadingFadeOut}
+          brandName={settings?.brand_name || 'DISSOF.ID'}
+          message="Memuat Koleksi Produk..."
+        />
+      )}
+
       <GlobalOrderNotifier onNavigateToOrders={handleOpenAdminOrders} />
       
       {/* Navbar */}

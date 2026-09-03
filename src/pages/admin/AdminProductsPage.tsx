@@ -33,6 +33,11 @@ import {
   saveCustomImgBBKey, 
   IMGBB_STORAGE_KEY 
 } from '../../lib/imgbb';
+import {
+  uploadProductImageToSupabase,
+  saveProductToSupabaseDatabase,
+  SUPABASE_STORAGE_BUCKET
+} from '../../lib/supabase';
 import { ImageWithFallback, FALLBACK_PRODUCT_IMAGE } from '../../components/common/ImageWithFallback';
 import { ImageCropModal } from '../../components/common/ImageCropModal';
 
@@ -249,39 +254,45 @@ export const AdminProductsPage: React.FC = () => {
     }
   };
 
-  // Upload files from mobile gallery / PC camera directly to ImgBB Free API
+  // Upload files from mobile gallery / PC camera directly to Supabase Storage Bucket "Product-image"
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setUploadingImage(true);
     setErrorMsg('');
-    setUploadProgressText(`Mempersiapkan ${files.length} foto untuk diunggah ke ImgBB API gratis...`);
+    setUploadProgressText(`Mempersiapkan ${files.length} foto untuk diunggah ke Supabase Storage ("${SUPABASE_STORAGE_BUCKET}")...`);
 
     try {
       const uploadedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setUploadProgressText(`Mengunggah foto (${i + 1}/${files.length}): ${file.name} ke ImgBB API...`);
+        setUploadProgressText(`Mengunggah foto (${i + 1}/${files.length}): ${file.name} ke Supabase Storage...`);
         try {
-          // Upload directly to ImgBB API
-          const res = await uploadImageToImgBB(file);
+          // 1. Upload directly to Supabase Storage bucket "Product-image"
+          // 2. Ambil Public URL dari Supabase
+          const res = await uploadProductImageToSupabase(file, name.trim() || 'product');
           if (res && res.url) {
             uploadedUrls.push(res.url);
           }
-        } catch (imgErr: any) {
-          console.warn('ImgBB direct file upload error, trying compressed fallback:', imgErr);
+        } catch (supaErr: any) {
+          console.warn('Supabase Storage direct upload error, trying compressed upload:', supaErr);
           try {
-            // Compress and retry upload to ImgBB
-            const compressed = await hardCompressImage(file, 800, 0.6, 195);
-            const fallbackRes = await uploadImageToImgBB(compressed);
+            // Compress and retry upload to Supabase Storage
+            const compressed = await hardCompressImage(file, 900, 0.7, 200);
+            const fallbackRes = await uploadProductImageToSupabase(compressed, name.trim() || 'product');
             if (fallbackRes && fallbackRes.url) {
               uploadedUrls.push(fallbackRes.url);
-            } else {
-              uploadedUrls.push(compressed);
             }
-          } catch {
-            setErrorMsg(imgErr.message || `Gagal mengunggah file "${file.name}" ke ImgBB.`);
+          } catch (retryErr: any) {
+            console.error('Retry Supabase upload error:', retryErr);
+            // If Supabase upload fails due to internet/quota, try ImgBB as secondary backup
+            try {
+              const imgbbRes = await uploadImageToImgBB(file);
+              if (imgbbRes?.url) uploadedUrls.push(imgbbRes.url);
+            } catch {
+              setErrorMsg(supaErr.message || `Gagal mengunggah file "${file.name}" ke Supabase Storage.`);
+            }
           }
         }
       }
@@ -291,10 +302,10 @@ export const AdminProductsPage: React.FC = () => {
           const filtered = prev.filter((img) => img !== FALLBACK_PRODUCT_IMAGE);
           return [...filtered, ...uploadedUrls];
         });
-        showToast(`${uploadedUrls.length} foto berhasil diunggah ke ImgBB & siap disimpan ke Firestore!`);
+        showToast(`${uploadedUrls.length} foto berhasil diunggah ke Supabase Storage ("${SUPABASE_STORAGE_BUCKET}")!`);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memproses unggah foto ke ImgBB.');
+      setErrorMsg(err.message || 'Gagal memproses unggah foto ke Supabase Storage.');
     } finally {
       setUploadingImage(false);
       setUploadProgressText('');
@@ -366,7 +377,7 @@ export const AdminProductsPage: React.FC = () => {
     });
   };
 
-  // Save product (Add or Edit) with ImgBB upload and Cloud Firestore persistence
+  // Save product (Add or Edit) with Supabase Storage & Supabase Database sync
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -386,15 +397,23 @@ export const AdminProductsPage: React.FC = () => {
     setErrorMsg('');
 
     try {
-      // 1. If any base64 images remain, upload them to ImgBB before saving
+      // 1. Upload any base64 images to Supabase Storage before saving
       const finalProcessedImages = await Promise.all(
         images.map(async (img) => {
           if (img && img.startsWith('data:')) {
             try {
-              const res = await uploadImageToImgBB(img);
+              // 1. Upload to Supabase Storage bucket "Product-image"
+              // 2. Retrieve Public URL
+              const res = await uploadProductImageToSupabase(img, name.trim() || 'product');
               if (res && res.url) return res.url;
             } catch (err) {
-              console.warn('ImgBB fallback on save:', err);
+              console.warn('Supabase Storage fallback upload on save, trying ImgBB:', err);
+              try {
+                const imgbbRes = await uploadImageToImgBB(img);
+                if (imgbbRes && imgbbRes.url) return imgbbRes.url;
+              } catch {
+                // Keep image as-is
+              }
             }
           }
           return img;
@@ -402,6 +421,7 @@ export const AdminProductsPage: React.FC = () => {
       );
 
       const validImages = finalProcessedImages.length > 0 ? finalProcessedImages : [FALLBACK_PRODUCT_IMAGE];
+      const primaryImageUrl = validImages[0] || '';
 
       const payload: Partial<Product> = {
         name: name.trim(),
@@ -419,11 +439,36 @@ export const AdminProductsPage: React.FC = () => {
         is_visible: isVisible,
       };
 
-      // 2. Save directly to Cloud Firestore & Local cache
-      await saveProductLocal(payload, editingProduct?.id);
+      // 2. Save product to local store context & cache
+      const savedProduct = await saveProductLocal(payload, editingProduct?.id);
+
+      // 3. Simpan data produk beserta Public URL gambarnya ke Supabase database (table 'products')
+      try {
+        const cat = categories.find((c) => c.id === categoryId);
+        await saveProductToSupabaseDatabase({
+          id: savedProduct?.id || editingProduct?.id,
+          name: name.trim(),
+          price: Number(price),
+          description: description.trim(),
+          image_url: primaryImageUrl,
+          images: validImages,
+          category_id: categoryId,
+          category_name: cat?.name || '',
+          stock: stock ? Number(stock) : 10,
+          original_price: originalPrice ? Number(originalPrice) : undefined,
+          is_best_seller: isBestSeller,
+          is_sold_out: isSoldOut,
+          is_visible: isVisible,
+          variants: payload.variants,
+          tags: payload.tags,
+        });
+        console.log('✅ Berhasil menyimpan produk beserta Public URL ke database Supabase (tabel "products")');
+      } catch (supaDbErr: any) {
+        console.warn('Catatan simpan ke database Supabase:', supaDbErr?.message || supaDbErr);
+      }
 
       // Show toast confirmation
-      showToast('Produk & Foto Berhasil Disimpan ke Firestore!');
+      showToast('Produk & Foto Berhasil Disimpan ke Supabase!');
 
       // Automatically close modal and reset error
       setModalOpen(false);
@@ -431,7 +476,7 @@ export const AdminProductsPage: React.FC = () => {
     } catch (err: any) {
       console.error('Error saving product:', err);
       setErrorMsg(
-        err.message || 'Gagal menyimpan data ke Cloud Firestore. Silakan periksa koneksi dan coba lagi.'
+        err.message || 'Gagal menyimpan data produk. Silakan periksa koneksi dan coba lagi.'
       );
     } finally {
       setIsSaving(false);
@@ -849,14 +894,14 @@ export const AdminProductsPage: React.FC = () => {
 
                 {/* Loading Indicator for Image Upload */}
                 {uploadingImage && (
-                  <div className="bg-pink-50 border-2 border-dashed border-pink-400 p-4 rounded-2xl flex items-center gap-3 shadow-xs animate-pulse">
-                    <RefreshCw className="w-5 h-5 text-pink-600 animate-spin shrink-0" />
+                  <div className="bg-emerald-50 border-2 border-dashed border-emerald-400 p-4 rounded-2xl flex items-center gap-3 shadow-xs animate-pulse">
+                    <RefreshCw className="w-5 h-5 text-emerald-600 animate-spin shrink-0" />
                     <div className="space-y-0.5">
-                      <p className="font-bold text-xs text-pink-900">
-                        {uploadProgressText || 'Sedang Mengunggah Foto ke ImgBB API gratis...'}
+                      <p className="font-bold text-xs text-emerald-900">
+                        {uploadProgressText || `Sedang Mengunggah Foto ke Supabase Storage (Bucket "${SUPABASE_STORAGE_BUCKET}")...`}
                       </p>
-                      <p className="text-[10px] text-pink-700">
-                        Foto diproses dan diunggah langsung ke server CDN ImgBB. URL gambar akan otomatis tersimpan ke Firestore.
+                      <p className="text-[10px] text-emerald-700">
+                        Foto diproses dan diunggah langsung ke Supabase Storage. URL publik gambar akan otomatis tersimpan ke Supabase Database.
                       </p>
                     </div>
                   </div>
@@ -866,6 +911,7 @@ export const AdminProductsPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {images.map((img, idx) => {
                     const sizeKB = getImageSizeInKB(img);
+                    const isSupabase = img.includes('supabase.co');
                     const isImgBB = img.includes('ibb.co') || img.includes('imgbb');
                     return (
                       <div 
@@ -895,15 +941,22 @@ export const AdminProductsPage: React.FC = () => {
                               </span>
                             )}
 
+                            {/* Supabase Storage badge */}
+                            {isSupabase && (
+                              <span className="bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
+                                Supabase
+                              </span>
+                            )}
+
                             {/* ImgBB badge if hosted on ImgBB */}
-                            {isImgBB && (
+                            {isImgBB && !isSupabase && (
                               <span className="bg-blue-600/90 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
                                 ImgBB
                               </span>
                             )}
 
                             {/* Ultra-light size badge */}
-                            {!isImgBB && sizeKB > 0 && (
+                            {!isSupabase && !isImgBB && sizeKB > 0 && (
                               <span className="bg-emerald-800/80 text-emerald-100 text-[8px] font-mono font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-auto backdrop-blur-xs">
                                 {sizeKB} KB
                               </span>
@@ -1300,15 +1353,25 @@ export const AdminProductsPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
-                  className="px-7 py-2.5 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+                  disabled={isSaving || uploadingImage}
+                  className="px-7 py-2.5 rounded-full bg-[#2D2D2D] hover:bg-black text-white font-bold text-xs shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {isSaving ? (
-                    <RefreshCw className="w-4 h-4 text-[#FF9AA2] animate-spin" />
+                    <>
+                      <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                      <span>{editingProduct ? 'Menyimpan Perubahan ke Supabase...' : 'Mengunggah & Menambah Produk...'}</span>
+                    </>
+                  ) : uploadingImage ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-pink-400 animate-spin" />
+                      <span>Sedang Upload Foto...</span>
+                    </>
                   ) : (
-                    <Check className="w-4 h-4 text-[#FF9AA2]" />
+                    <>
+                      <Check className="w-4 h-4 text-[#FF9AA2]" />
+                      <span>{editingProduct ? 'Simpan Perubahan' : 'Tambah Produk Baru'}</span>
+                    </>
                   )}
-                  <span>{isSaving ? 'Menyimpan Perubahan...' : (editingProduct ? 'Simpan Perubahan' : 'Simpan Perubahan')}</span>
                 </button>
               </div>
 

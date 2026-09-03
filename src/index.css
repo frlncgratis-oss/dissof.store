@@ -99,6 +99,15 @@ canvas,
   visibility: visible !important;
 }
 
+/* Modern Loading Screen Smooth Fade-Out Override */
+.loading-fade-out {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.6s, transform 0.6s !important;
+  transform: translateY(-8px) scale(0.99) !important;
+}
+
 
 /* ==========================================================================
    2. BOTTOM SHEET / DRAWER SLIDE ANIMATIONS
